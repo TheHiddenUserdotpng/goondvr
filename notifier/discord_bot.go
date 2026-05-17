@@ -36,8 +36,9 @@ var BotMessageIDHook func(id string)
 var StatusBot = &discordStatusBot{}
 
 type discordStatusBot struct {
-	mu       sync.Mutex
-	debounce *time.Timer
+	mu            sync.Mutex
+	debounce      *time.Timer
+	lastSignature string
 }
 
 // Refresh schedules a debounced embed update (500 ms) so rapid status flips
@@ -72,6 +73,14 @@ func (b *discordStatusBot) publish() {
 	if BotChannelsHook != nil {
 		channels = BotChannelsHook()
 	}
+	signature := statusSignature(channels)
+
+	b.mu.Lock()
+	if messageID != "" && signature == b.lastSignature {
+		b.mu.Unlock()
+		return
+	}
+	b.mu.Unlock()
 
 	payload := map[string]any{
 		"embeds": []any{buildStatusEmbed(channels)},
@@ -129,6 +138,10 @@ func (b *discordStatusBot) publish() {
 		return
 	}
 
+	b.mu.Lock()
+	b.lastSignature = signature
+	b.mu.Unlock()
+
 	// Persist the message ID when we posted a brand-new message.
 	if messageID == "" {
 		var msg struct {
@@ -141,6 +154,39 @@ func (b *discordStatusBot) publish() {
 			}
 		}
 	}
+}
+
+func statusSignature(channels []BotChannel) string {
+	live := make([]BotChannel, 0, len(channels))
+	offline := make([]BotChannel, 0, len(channels))
+
+	for _, ch := range channels {
+		if ch.IsOnline {
+			live = append(live, ch)
+			continue
+		}
+		offline = append(offline, ch)
+	}
+
+	sort.Slice(live, func(i, j int) bool {
+		return strings.ToLower(live[i].Username) < strings.ToLower(live[j].Username)
+	})
+	sort.Slice(offline, func(i, j int) bool {
+		return strings.ToLower(offline[i].Username) < strings.ToLower(offline[j].Username)
+	})
+
+	var builder strings.Builder
+	builder.Grow(len(channels) * 32)
+	fmt.Fprintf(&builder, "live:%d|offline:%d|total:%d", len(live), len(offline), len(channels))
+
+	for _, ch := range live {
+		fmt.Fprintf(&builder, "|L|%s|%s|%s", strings.ToLower(ch.Username), strings.ToLower(ch.Site), ch.RoomTitle)
+	}
+	for _, ch := range offline {
+		fmt.Fprintf(&builder, "|O|%s|%s", strings.ToLower(ch.Username), strings.ToLower(ch.Site))
+	}
+
+	return builder.String()
 }
 
 func (b *discordStatusBot) doRequest(method, url, token string, body []byte) (*http.Response, error) {
