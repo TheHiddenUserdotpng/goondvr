@@ -14,7 +14,7 @@
         <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
         <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
         <link rel="manifest" href="/static/site.webmanifest">
-        <title>GoondVR</title>
+        <title>Modded | GoondVR</title>
         <style>
             /* View mode: grid and collapsed hidden by default (expanded is default) */
             .view-grid, .view-collapsed { display: none; }
@@ -110,7 +110,7 @@
                     </button>
                 </div>
                 <div class="column">
-                    <button class="ts-button is-start-icon" data-dialog="create-dialog">
+                    <button id="open-create-channel-btn" class="ts-button is-start-icon js-add-channel" data-dialog="create-dialog">
                         <span class="ts-icon is-plus-icon"></span>
                         Add Channel
                     </button>
@@ -139,6 +139,22 @@
             </div>
             <!-- / Stats Bar -->
 
+            <div class="ts-box has-top-spaced-large" sse-connect="/updates?stream=updates">
+                <div class="ts-content is-padded" style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem;">
+                    <div class="ts-header is-small">SMB Upload Status</div>
+                    <label class="ts-switch is-small" style="display:flex">
+                        <input id="smb-log-autoscroll" type="checkbox" checked />
+                        Auto-Scroll SMB Log
+                    </label>
+                </div>
+                <div class="ts-divider"></div>
+                <div class="ts-content is-padded">
+                    <div class="ts-input">
+                        <textarea id="smb-log-textarea" rows="7" readonly sse-swap="smb-log" style="scrollbar-width: thin">{{ range .SMBLogs }}{{ . }}&NewLine;{{ end }}</textarea>
+                    </div>
+                </div>
+            </div>
+
             {{ if not .Channels }}
             <!-- Blankslate -->
             <div class="ts-divider has-vertically-spaced-large"></div>
@@ -147,7 +163,7 @@
                 <div class="header">No channels are currently recording</div>
                 <div class="description">Add a new Chaturbate channel to start recording.</div>
                 <div class="action">
-                    <button class="ts-button is-start-icon" data-dialog="create-dialog">
+                    <button class="ts-button is-start-icon js-add-channel" data-dialog="create-dialog">
                         <span class="ts-icon is-plus-icon"></span>
                         Add Channel
                     </button>
@@ -351,7 +367,77 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Discord Bot Token</div>
+                            <div class="content">
+                                <div class="ts-input">
+                                    <input type="password" name="discord_bot_token" value="{{ .Config.DiscordBotToken }}" placeholder="Bot token" autocomplete="off" />
+                                </div>
+                                <div class="ts-text is-description has-top-spaced-small">Optional: used for a persistent status embed message.</div>
+                            </div>
+                        </div>
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Discord Status Channel ID</div>
+                            <div class="content">
+                                <div class="ts-input">
+                                    <input type="text" name="discord_status_channel_id" value="{{ .Config.DiscordStatusChannelID }}" placeholder="123456789012345678" />
+                                </div>
+                                <div class="ts-text is-description has-top-spaced-small">When set with bot token, goondvr updates one embed with current live recordings.</div>
+                            </div>
+                        </div>
+
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">n8n Webhook URL</div>
+                            <div class="content">
+                                <div class="ts-input">
+                                    <input type="url" name="n8n_webhook_url" value="{{ .Config.N8NWebhookURL }}" placeholder="https://n8n.example.com/webhook/goondvr" />
+                                </div>
+                                <div class="ts-text is-description has-top-spaced-small">Sends notifier events to n8n as JSON payloads.</div>
+                            </div>
+                        </div>
+                        <div class="ts-control is-wide has-top-spaced">
+                            <div class="label">n8n Token (optional)</div>
+                            <div class="content">
+                                <div class="ts-input">
+                                    <input type="password" name="n8n_token" value="{{ .Config.N8NToken }}" placeholder="Bearer token" autocomplete="off" />
+                                </div>
+                            </div>
+                        </div>
                         <!-- / Discord -->
+
+                        <div class="ts-divider has-vertically-spaced-large"></div>
+
+                        <div class="ts-header is-small has-bottom-spaced">Night Ops</div>
+                        <div class="ts-control is-wide">
+                            <div class="label">Enable Night Ops Mode</div>
+                            <div class="content is-padded">
+                                <label class="ts-switch">
+                                    <input type="checkbox" name="night_ops_enabled" value="true" {{ if .Config.NightOpsEnabled }}checked{{ end }} />
+                                    Faster retries and tighter backoff during night window
+                                </label>
+                            </div>
+                        </div>
+                        <div class="ts-grid is-relaxed is-3-columns has-top-spaced-large">
+                            <div class="column">
+                                <div class="ts-text is-bold">Start Hour</div>
+                                <div class="ts-input has-top-spaced-small">
+                                    <input type="number" min="0" max="23" name="night_ops_start_hour" value="{{ .Config.NightOpsStartHour }}" />
+                                </div>
+                            </div>
+                            <div class="column">
+                                <div class="ts-text is-bold">End Hour</div>
+                                <div class="ts-input has-top-spaced-small">
+                                    <input type="number" min="0" max="23" name="night_ops_end_hour" value="{{ .Config.NightOpsEndHour }}" />
+                                </div>
+                            </div>
+                            <div class="column">
+                                <div class="ts-text is-bold">Transient Retry (sec)</div>
+                                <div class="ts-input has-top-spaced-small">
+                                    <input type="number" min="1" max="60" name="night_ops_retry_seconds" value="{{ .Config.NightOpsRetrySeconds }}" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ts-text is-description has-top-spaced-small">If start > end, window crosses midnight (e.g. 22 -> 6).</div>
 
                         <!-- Thresholds -->
                         <div class="ts-control is-wide has-top-spaced-large">
@@ -412,6 +498,72 @@
                             </div>
                         </div>
                         <!-- / Stream Online Toggle -->
+
+                        <div class="ts-divider has-vertically-spaced-large"></div>
+
+                        <div class="ts-header is-small has-bottom-spaced">TrueNAS SMB Upload</div>
+                        <div class="ts-control is-wide">
+                            <div class="label">Enable SMB Upload</div>
+                            <div class="content is-padded">
+                                <label class="ts-switch">
+                                    <input type="checkbox" name="smb_upload_enabled" value="true" {{ if .Config.SMBUploadEnabled }}checked{{ end }} />
+                                    Upload completed recordings and clips to SMB share
+                                </label>
+                            </div>
+                        </div>
+                        <div class="ts-control is-wide has-top-spaced">
+                            <div class="label">SMB Host</div>
+                            <div class="content">
+                                <div class="ts-input">
+                                    <input type="text" name="smb_upload_host" value="{{ .Config.SMBUploadHost }}" placeholder="192.168.1.20:445" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ts-control is-wide has-top-spaced">
+                            <div class="label">SMB Share</div>
+                            <div class="content">
+                                <div class="ts-input">
+                                    <input type="text" name="smb_upload_share" value="{{ .Config.SMBUploadShare }}" placeholder="media" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ts-grid is-relaxed is-2-columns has-top-spaced-large">
+                            <div class="column">
+                                <div class="ts-text is-bold">Username</div>
+                                <div class="ts-input has-top-spaced-small">
+                                    <input type="text" name="smb_upload_username" value="{{ .Config.SMBUploadUsername }}" placeholder="truenas-user" />
+                                </div>
+                            </div>
+                            <div class="column">
+                                <div class="ts-text is-bold">Password</div>
+                                <div class="ts-input has-top-spaced-small">
+                                    <input type="password" name="smb_upload_password" value="{{ .Config.SMBUploadPassword }}" placeholder="password" autocomplete="off" />
+                                </div>
+                            </div>
+                            <div class="column">
+                                <div class="ts-text is-bold">Domain (optional)</div>
+                                <div class="ts-input has-top-spaced-small">
+                                    <input type="text" name="smb_upload_domain" value="{{ .Config.SMBUploadDomain }}" placeholder="WORKGROUP" />
+                                </div>
+                            </div>
+                            <div class="column">
+                                <div class="ts-text is-bold">Remote Base Dir (optional)</div>
+                                <div class="ts-input has-top-spaced-small">
+                                    <input type="text" name="smb_upload_base_dir" value="{{ .Config.SMBUploadBaseDir }}" placeholder="goondvr" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ts-text is-description has-top-spaced-small">Uploads happen asynchronously when files are completed or clips/highlights are created.</div>
+                        <div class="ts-grid is-relaxed is-2-columns has-top-spaced-large">
+                            <div class="column">
+                                <button id="smb-test-btn" type="button" class="ts-button is-outlined is-start-icon is-fluid">
+                                    <span class="ts-icon is-plug-icon"></span>Test SMB
+                                </button>
+                            </div>
+                            <div class="column">
+                                <div id="smb-test-result" class="ts-text is-description"></div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="ts-divider"></div>
@@ -440,11 +592,11 @@
         <!-- Create Dialog -->
         <dialog id="create-dialog" class="ts-modal" style="--width: 680px">
             <div class="content">
-                <form action="/create_channel" method="POST">
+                <form id="create-channel-form" action="/create_channel" method="POST">
                     <div class="ts-content is-horizontally-padded is-secondary">
                         <div class="ts-grid">
                             <div class="column is-fluid">
-                                <div class="ts-header">Add Channel</div>
+                                <div id="create-dialog-title" class="ts-header">Add Channel</div>
                             </div>
                             <div class="column">
                                 <button type="reset" class="ts-close is-rounded is-large is-secondary" data-dialog="create-dialog"></button>
@@ -460,7 +612,7 @@
                             <div class="label">Channel Username</div>
                             <div class="content">
                                 <div class="ts-input">
-                                    <input type="text" name="username" autofocus required />
+                                    <input id="create-username" type="text" name="username" autofocus required />
                                 </div>
                                 <div class="ts-text is-description has-top-spaced-small">Use commas to separate multiple channel names, e.g. "channel1, channel2, channel3".</div>
                             </div>
@@ -472,7 +624,7 @@
                             <div class="label">Site</div>
                             <div class="content">
                                 <div class="ts-select">
-                                    <select name="site">
+                                    <select id="create-site" name="site">
                                         <option value="chaturbate" selected>Chaturbate</option>
                                         <option value="stripchat">Stripchat</option>
                                     </select>
@@ -507,11 +659,11 @@
                             <div class="content is-padded">
                                 <div class="ts-wrap is-compact is-vertical">
                                     <label class="ts-radio">
-                                        <input type="radio" name="framerate" value="60" {{ if eq .Config.Framerate 60 }}checked{{ end }} />
+                                        <input id="create-fps-60" type="radio" name="framerate" value="60" {{ if eq .Config.Framerate 60 }}checked{{ end }} />
                                         60 FPS (or lower)
                                     </label>
                                     <label class="ts-radio">
-                                        <input type="radio" name="framerate" value="30" {{ if eq .Config.Framerate 30 }}checked{{ end }} />
+                                        <input id="create-fps-30" type="radio" name="framerate" value="30" {{ if eq .Config.Framerate 30 }}checked{{ end }} />
                                         30 FPS
                                     </label>
                                 </div>
@@ -524,7 +676,7 @@
                             <div class="label">Filename Pattern</div>
                             <div class="content">
                                 <div class="ts-input">
-                                    <input type="text" name="pattern" value="{{ .Config.Pattern }}" />
+                                    <input id="create-pattern" type="text" name="pattern" value="{{ .Config.Pattern }}" />
                                 </div>
                                 <div class="ts-text is-description has-top-spaced-small">
                                     See the <a class="ts-text is-external-link is-link" href="https://github.com/teacat/goondvr" target="_blank">README</a> for details.
@@ -544,14 +696,14 @@
                                         <div class="column">
                                             <div class="ts-text is-bold">Max Filesize</div>
                                             <div class="ts-input is-end-labeled has-top-spaced-small">
-                                                <input type="number" name="max_filesize" value="{{ .Config.MaxFilesize }}" />
+                                                <input id="create-max-filesize" type="number" name="max_filesize" value="{{ .Config.MaxFilesize }}" />
                                                 <span class="label">MB</span>
                                             </div>
                                         </div>
                                         <div class="column">
                                             <div class="ts-text is-bold">Max Duration</div>
                                             <div class="ts-input is-end-labeled has-top-spaced-small">
-                                                <input type="number" name="max_duration" value="{{ .Config.MaxDuration }}" />
+                                                <input id="create-max-duration" type="number" name="max_duration" value="{{ .Config.MaxDuration }}" />
                                                 <span class="label">Min(s)</span>
                                             </div>
                                         </div>
@@ -568,13 +720,93 @@
                     <div class="ts-content is-secondary is-horizontally-padded">
                         <div class="ts-wrap is-end-aligned">
                             <button type="reset" class="ts-button is-outlined is-secondary" data-dialog="create-dialog">Cancel</button>
-                            <button type="submit" class="ts-button is-primary">Add Channel</button>
+                            <button id="create-submit-btn" type="submit" class="ts-button is-primary">Add Channel</button>
                         </div>
                     </div>
                 </form>
             </div>
         </dialog>
         <!-- / Create Dialog -->
+
+        <!-- Clips Dialog -->
+        <dialog id="clips-dialog" class="ts-modal" style="--width: 960px">
+            <div class="content">
+                <div class="ts-content is-horizontally-padded is-secondary">
+                    <div class="ts-grid">
+                        <div class="column is-fluid">
+                            <div class="ts-header">Clips & Highlights</div>
+                            <div id="clips-channel-label" class="ts-text is-description"></div>
+                        </div>
+                        <div class="column">
+                            <button type="reset" class="ts-close is-rounded is-large is-secondary" data-dialog="clips-dialog"></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ts-divider"></div>
+
+                <div class="ts-content is-vertically-padded">
+                    <div class="ts-grid is-relaxed is-2-columns">
+                        <div class="column">
+                            <div class="ts-text is-bold">Finished Recordings</div>
+                            <div id="clips-recordings-grid" class="ts-wrap has-top-spaced-small" style="max-height: 360px; overflow:auto; gap:0.6rem;"></div>
+                            <div class="ts-text is-description has-top-spaced-small">Klik en recording for preview. Thumbnails genereres automatisk.</div>
+                        </div>
+                        <div class="column">
+                            <div class="ts-text is-bold">Preview</div>
+                            <div class="has-top-spaced-small" style="background:#111; border-radius:6px; overflow:hidden;">
+                                <video id="clips-preview" controls preload="metadata" style="width:100%; max-height:260px; display:block;"></video>
+                            </div>
+                            <div class="has-top-spaced-small" style="background:#0f1115; border-radius:6px; padding:0.5rem;">
+                                <canvas id="clips-timeline" width="420" height="64" style="width:100%; height:64px; display:block;"></canvas>
+                            </div>
+                            <div id="clips-preview-name" class="ts-text is-description has-top-spaced-small"></div>
+                            <div class="ts-grid is-relaxed is-2-columns has-top-spaced-small">
+                                <div class="column"><button id="clips-use-current-time" type="button" class="ts-button is-small is-outlined is-fluid">Use Current Time</button></div>
+                                <div class="column"><button id="clips-add-row" type="button" class="ts-button is-small is-fluid">+ Add Clip Row</button></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ts-divider has-vertically-spaced-large"></div>
+
+                    <div class="ts-text is-bold">Batch Clip Builder</div>
+                    <div id="clips-rows" class="has-top-spaced-small"></div>
+                    <div class="has-top-spaced-small">
+                        <button id="clips-create-batch-btn" type="button" class="ts-button is-primary is-start-icon">
+                            <span class="ts-icon is-scissors-icon"></span>Create All Clips From Selected Recording
+                        </button>
+                    </div>
+
+                    <div class="ts-divider has-vertically-spaced-large"></div>
+
+                    <div class="ts-control is-wide">
+                        <div class="label">Existing Clips</div>
+                        <div id="clips-list" class="ts-content is-padded is-secondary" style="max-height: 180px; overflow: auto"></div>
+                        <div class="has-top-spaced-small" style="background:#111; border-radius:6px; overflow:hidden;">
+                            <video id="clips-generated-preview" controls preload="metadata" style="width:100%; max-height:220px; display:block;"></video>
+                        </div>
+                    </div>
+
+                    <div class="ts-grid is-relaxed is-2-columns has-top-spaced-large">
+                        <div class="column is-fluid">
+                            <div class="ts-text is-bold">Combined Output Name (optional)</div>
+                            <div class="ts-input has-top-spaced-small">
+                                <input id="clips-combine-name" type="text" placeholder="highlights_mix" />
+                            </div>
+                        </div>
+                        <div class="column" style="display:flex; align-items:flex-end;">
+                            <button id="clips-combine-btn" class="ts-button is-outlined is-start-icon">
+                                <span class="ts-icon is-layer-group-icon"></span>Combine Selected
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="clips-status" class="ts-text is-description has-top-spaced"></div>
+                </div>
+            </div>
+        </dialog>
+        <!-- / Clips Dialog -->
 
         <script>
             const LIVE_THUMB_URL = (username, site, channelID) => {
@@ -751,14 +983,22 @@
                 // ignore anything with `-log` content swap if "auto-update" was unchecked
                 let sswe_id = e.detail.elt.getAttribute('sse-swap')
                 if (sswe_id && sswe_id.endsWith("-log") ) {
-                    if (!e.detail.elt.closest(".ts-box").querySelector("[type=checkbox]").checked) {
+                    let ownerBox = e.detail.elt.closest(".ts-box")
+                    let toggle = ownerBox && ownerBox.querySelector("[type=checkbox]")
+                    if (toggle && !toggle.checked) {
                         e.preventDefault()
                         return
                     }
                 }
                 // else scroll the textarea to bottom with async trick
                 setTimeout(() => {
-                    let textarea = e.detail.elt.closest(".ts-box") && e.detail.elt.closest(".ts-box").querySelector("textarea")
+                    let textarea = null
+                    if (e.detail.elt.tagName && e.detail.elt.tagName.toLowerCase() === 'textarea') {
+                        textarea = e.detail.elt
+                    } else {
+                        let box = e.detail.elt.closest(".ts-box")
+                        textarea = box && box.querySelector("textarea")
+                    }
                     if (textarea) textarea.scrollTop = textarea.scrollHeight
                 }, 0)
             })
@@ -808,12 +1048,489 @@
                 return true;
             }
 
+            async function runSMBTest() {
+                const btn = document.getElementById('smb-test-btn');
+                const result = document.getElementById('smb-test-result');
+                const form = document.querySelector('#settings-dialog form');
+                if (!btn || !result || !form) return;
+
+                const host = (form.querySelector('[name="smb_upload_host"]')?.value || '').trim();
+                const share = (form.querySelector('[name="smb_upload_share"]')?.value || '').trim();
+                const username = (form.querySelector('[name="smb_upload_username"]')?.value || '').trim();
+                const password = form.querySelector('[name="smb_upload_password"]')?.value || '';
+                const domain = (form.querySelector('[name="smb_upload_domain"]')?.value || '').trim();
+                const baseDir = (form.querySelector('[name="smb_upload_base_dir"]')?.value || '').trim();
+
+                btn.disabled = true;
+                result.className = 'ts-text is-description';
+                result.textContent = 'Tester SMB forbindelse...';
+
+                try {
+                    const body = new URLSearchParams({
+                        host,
+                        share,
+                        username,
+                        password,
+                        domain,
+                        base_dir: baseDir,
+                    });
+                    const res = await fetch('/api/smb_test', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                        },
+                        body: body.toString(),
+                    });
+                    const data = await res.json().catch(() => ({ ok: false, message: 'Ugyldigt svar fra server' }));
+                    if (res.ok && data.ok) {
+                        result.className = 'ts-text is-positive';
+                        result.textContent = data.message || 'SMB test OK';
+                    } else {
+                        result.className = 'ts-text is-negative';
+                        result.textContent = data.message || 'SMB test fejlede';
+                    }
+                } catch (err) {
+                    result.className = 'ts-text is-negative';
+                    result.textContent = 'SMB test fejlede: netværksfejl';
+                } finally {
+                    btn.disabled = false;
+                }
+            }
+
+            document.getElementById('smb-test-btn')?.addEventListener('click', runSMBTest);
+
+            let clipsChannelID = '';
+            let clipsUsername = '';
+            let clipsRecordings = [];
+            let clipsSelectedRecording = '';
+            let clipsPreviewDuration = 0;
+
+            function shortName(path) {
+                if (!path) return '';
+                const normalized = path.replace(/\\/g, '/');
+                return normalized.substring(normalized.lastIndexOf('/') + 1);
+            }
+
+            function clamp(value, min, max) {
+                return Math.max(min, Math.min(max, value));
+            }
+
+            function createClipRow(start, duration, name) {
+                const row = document.createElement('div');
+                row.className = 'ts-grid is-relaxed is-4-columns has-top-spaced-small clip-row';
+                row.innerHTML = `
+                    <div class="column is-fluid" style="grid-column: span 2;">
+                        <div class="ts-text is-description">In/Out (drag handles)</div>
+                        <div style="position:relative; height:28px; margin-top:0.2rem;">
+                            <input class="clip-in" type="range" min="0" max="100" step="1" value="${start || 0}" style="position:absolute; inset:0; width:100%;">
+                            <input class="clip-out" type="range" min="1" max="100" step="1" value="${(start || 0) + (duration || 45)}" style="position:absolute; inset:0; width:100%;">
+                        </div>
+                    </div>
+                    <div class="column is-fluid">
+                        <div class="ts-text is-description">Label</div>
+                        <div class="ts-input"><input class="clip-name" type="text" value="${name || ''}" placeholder="moment_name"></div>
+                        <div class="ts-text is-description clip-readout has-top-spaced-small"></div>
+                    </div>
+                    <div class="column" style="display:flex; align-items:flex-end;">
+                        <button type="button" class="ts-button is-small is-icon is-outlined is-negative clip-remove"><span class="ts-icon is-trash-icon"></span></button>
+                    </div>
+                `;
+                const inRange = row.querySelector('.clip-in');
+                const outRange = row.querySelector('.clip-out');
+                const readout = row.querySelector('.clip-readout');
+
+                function syncRow() {
+                    const max = Math.max(1, Math.floor(clipsPreviewDuration || 100));
+                    inRange.max = String(max);
+                    outRange.max = String(max);
+                    let inSec = parseInt(inRange.value || '0', 10);
+                    let outSec = parseInt(outRange.value || '1', 10);
+                    inSec = clamp(inSec, 0, max - 1);
+                    outSec = clamp(outSec, 1, max);
+                    if (outSec <= inSec) {
+                        if (document.activeElement === inRange) {
+                            outSec = clamp(inSec + 1, 1, max);
+                            outRange.value = String(outSec);
+                        } else {
+                            inSec = clamp(outSec - 1, 0, max - 1);
+                            inRange.value = String(inSec);
+                        }
+                    }
+                    const durationSec = Math.max(1, outSec - inSec);
+                    readout.textContent = `Start ${inSec}s - End ${outSec}s (${durationSec}s)`;
+                    drawTimeline();
+                }
+
+                inRange.addEventListener('input', syncRow);
+                outRange.addEventListener('input', syncRow);
+                row.querySelector('.clip-remove').addEventListener('click', () => {
+                    row.remove();
+                    drawTimeline();
+                });
+                syncRow();
+                return row;
+            }
+
+            function drawTimeline() {
+                const canvas = document.getElementById('clips-timeline');
+                const preview = document.getElementById('clips-preview');
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                const width = canvas.width;
+                const height = canvas.height;
+                ctx.clearRect(0, 0, width, height);
+
+                ctx.fillStyle = '#1a1f29';
+                ctx.fillRect(0, 0, width, height);
+
+                // Pseudo waveform bars for visual timeline guidance.
+                for (let x = 0; x < width; x += 4) {
+                    const amp = 8 + Math.abs(Math.sin(x * 0.045)) * 18;
+                    const y = Math.floor((height - amp) / 2);
+                    ctx.fillStyle = '#2e3f59';
+                    ctx.fillRect(x, y, 2, amp);
+                }
+
+                const max = Math.max(1, Math.floor(clipsPreviewDuration || 1));
+                const rows = Array.from(document.querySelectorAll('#clips-rows .clip-row'));
+                rows.forEach((row, idx) => {
+                    const inSec = parseInt(row.querySelector('.clip-in').value || '0', 10);
+                    const outSec = parseInt(row.querySelector('.clip-out').value || '0', 10);
+                    const x1 = Math.floor((inSec / max) * width);
+                    const x2 = Math.floor((outSec / max) * width);
+                    const colors = ['#57f287', '#5865f2', '#f1c40f', '#e67e22', '#eb459e'];
+                    ctx.fillStyle = colors[idx % colors.length] + 'aa';
+                    ctx.fillRect(x1, 8, Math.max(2, x2 - x1), height - 16);
+                });
+
+                const current = preview && isFinite(preview.currentTime) ? preview.currentTime : 0;
+                const cx = Math.floor((clamp(current, 0, max) / max) * width);
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(cx, 0);
+                ctx.lineTo(cx, height);
+                ctx.stroke();
+            }
+
+            function renderClipRows(defaultStart) {
+                const rows = document.getElementById('clips-rows');
+                if (!rows) return;
+                if (!rows.querySelector('.clip-row')) {
+                    rows.appendChild(createClipRow(defaultStart || 0, 45, ''));
+                }
+            }
+
+            function renderRecordingsGrid(items) {
+                const grid = document.getElementById('clips-recordings-grid');
+                const preview = document.getElementById('clips-preview');
+                const previewName = document.getElementById('clips-preview-name');
+                if (!grid) return;
+                grid.innerHTML = '';
+                if (!items || items.length === 0) {
+                    grid.innerHTML = '<div class="ts-text is-description">No finished recordings found.</div>';
+                    if (preview) preview.removeAttribute('src');
+                    if (previewName) previewName.textContent = '';
+                    clipsSelectedRecording = '';
+                    return;
+                }
+                items.forEach((item, idx) => {
+                    const card = document.createElement('button');
+                    card.type = 'button';
+                    card.className = 'ts-button is-outlined';
+                    card.style.cssText = 'display:flex; flex-direction:column; width:180px; padding:0; overflow:hidden; text-align:left;';
+                    card.innerHTML = `
+                        <img src="${item.thumb_url}" alt="thumb" style="width:100%; height:100px; object-fit:cover; background:#111;" />
+                        <span style="padding:0.45rem; font-size:12px; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${item.path}">${item.name}</span>
+                    `;
+                    card.addEventListener('click', () => {
+                        clipsSelectedRecording = item.path;
+                        if (preview) {
+                            preview.src = item.preview_url;
+                            preview.load();
+                        }
+                        if (previewName) previewName.textContent = item.name;
+                        Array.from(grid.querySelectorAll('button')).forEach(btn => btn.classList.add('is-outlined'));
+                        card.classList.remove('is-outlined');
+                    });
+                    grid.appendChild(card);
+                    if (idx === 0) {
+                        card.click();
+                    }
+                });
+            }
+
+            async function loadRecordings() {
+                if (!clipsChannelID) return;
+                const res = await fetch('/api/recordings/' + encodeURIComponent(clipsChannelID));
+                const data = await res.json();
+                const items = (data && data.items) || [];
+                clipsRecordings = items;
+                renderRecordingsGrid(items);
+            }
+
+            async function loadClips() {
+                const container = document.getElementById('clips-list');
+                if (!container || !clipsChannelID) return;
+                container.innerHTML = '';
+                const res = await fetch('/api/clips/' + encodeURIComponent(clipsChannelID));
+                const data = await res.json();
+                const items = (data && data.items) || [];
+                if (items.length === 0) {
+                    container.innerHTML = '<div class="ts-text is-description">No clips yet.</div>';
+                    return;
+                }
+                items.forEach(item => {
+                    const path = item.path || item;
+                    const name = item.name || shortName(path);
+                    const previewURL = item.preview_url || '';
+                    const row = document.createElement('label');
+                    row.className = 'ts-checkbox';
+                    row.style.display = 'flex';
+                    row.style.alignItems = 'center';
+                    row.style.gap = '0.4rem';
+                    row.style.marginBottom = '0.25rem';
+                    row.innerHTML = '<input type="checkbox" class="clips-checkbox" value="' + path.replace(/"/g, '&quot;') + '"><button type="button" class="ts-button is-small is-icon is-outlined clips-play" title="Preview clip"><span class="ts-icon is-play-icon"></span></button><span>' + name + '</span>';
+                    const playBtn = row.querySelector('.clips-play');
+                    playBtn.addEventListener('click', () => {
+                        if (!previewURL) return;
+                        const player = document.getElementById('clips-generated-preview');
+                        if (!player) return;
+                        player.src = previewURL;
+                        player.load();
+                        player.play().catch(() => {});
+                    });
+                    container.appendChild(row);
+                });
+            }
+
+            function setClipsStatus(text, isError) {
+                const el = document.getElementById('clips-status');
+                if (!el) return;
+                el.textContent = text || '';
+                el.style.color = isError ? '#e53935' : '';
+            }
+
+            async function openClipsDialog(channelID, username) {
+                clipsChannelID = channelID;
+                clipsUsername = username || '';
+                clipsSelectedRecording = '';
+                const label = document.getElementById('clips-channel-label');
+                if (label) label.textContent = clipsUsername ? ('Channel: ' + clipsUsername) : channelID;
+                setClipsStatus('Loading recordings and clips...');
+                try {
+                    await loadRecordings();
+                    renderClipRows(0);
+                    await loadClips();
+                    setClipsStatus('Ready. Select a recording and create moments.');
+                } catch (err) {
+                    setClipsStatus('Failed to load clips data.', true);
+                }
+            }
+
             // Initial setup on page load
             document.addEventListener("DOMContentLoaded", function() {
                 const savedView = localStorage.getItem('dvr-view') || 'expanded';
                 setView(savedView);
                 initThumbSwitchers();
                 initMarquees();
+
+                const createForm = document.getElementById('create-channel-form');
+                const createTitle = document.getElementById('create-dialog-title');
+                const createSubmit = document.getElementById('create-submit-btn');
+                const usernameInput = document.getElementById('create-username');
+                const siteSelect = document.getElementById('create-site');
+                const patternInput = document.getElementById('create-pattern');
+                const maxDurationInput = document.getElementById('create-max-duration');
+                const maxFilesizeInput = document.getElementById('create-max-filesize');
+                const fps30 = document.getElementById('create-fps-30');
+                const fps60 = document.getElementById('create-fps-60');
+                const resolutionSelect = document.querySelector('select[name="resolution"]');
+
+                function setAddMode() {
+                    if (!createForm) return;
+                    createForm.action = '/create_channel';
+                    if (createTitle) createTitle.textContent = 'Add Channel';
+                    if (createSubmit) createSubmit.textContent = 'Add Channel';
+                    if (usernameInput) usernameInput.readOnly = false;
+                    if (siteSelect) siteSelect.disabled = false;
+                }
+
+                function setEditMode(btn) {
+                    if (!createForm || !btn) return;
+                    const channelID = btn.dataset.channelId;
+                    if (!channelID) return;
+                    createForm.action = '/edit_channel/' + encodeURIComponent(channelID);
+                    if (createTitle) createTitle.textContent = 'Edit Channel';
+                    if (createSubmit) createSubmit.textContent = 'Save Changes';
+                    if (usernameInput) {
+                        usernameInput.value = btn.dataset.username || '';
+                        usernameInput.readOnly = true;
+                    }
+                    if (siteSelect) {
+                        siteSelect.value = btn.dataset.site || 'chaturbate';
+                        siteSelect.disabled = true;
+                    }
+                    if (patternInput) patternInput.value = btn.dataset.pattern || patternInput.value;
+                    if (maxDurationInput) maxDurationInput.value = btn.dataset.maxDuration || '0';
+                    if (maxFilesizeInput) maxFilesizeInput.value = btn.dataset.maxFilesize || '0';
+                    if (resolutionSelect && btn.dataset.resolution) resolutionSelect.value = btn.dataset.resolution;
+                    const fps = btn.dataset.framerate;
+                    if (fps === '60' && fps60) fps60.checked = true;
+                    if (fps === '30' && fps30) fps30.checked = true;
+                }
+
+                document.body.addEventListener('click', function(e) {
+                    const clipsBtn = e.target.closest('.js-open-clips');
+                    if (clipsBtn) {
+                        const clipsDialog = document.getElementById('clips-dialog');
+                        if (clipsDialog && !clipsDialog.open) {
+                            try {
+                                clipsDialog.showModal();
+                            } catch (_) {
+                                clipsDialog.setAttribute('open', 'open');
+                            }
+                        }
+                        openClipsDialog(clipsBtn.dataset.channelId, clipsBtn.dataset.username);
+                        return;
+                    }
+                    const editBtn = e.target.closest('.js-edit-channel');
+                    if (editBtn) {
+                        setEditMode(editBtn);
+                        return;
+                    }
+                    const addBtn = e.target.closest('.js-add-channel');
+                    if (addBtn) {
+                        setAddMode();
+                    }
+                });
+
+                const createDialog = document.getElementById('create-dialog');
+                if (createDialog) {
+                    createDialog.addEventListener('close', setAddMode);
+                }
+
+                const clipsAddRowBtn = document.getElementById('clips-add-row');
+                if (clipsAddRowBtn) {
+                    clipsAddRowBtn.addEventListener('click', function() {
+                        const rows = document.getElementById('clips-rows');
+                        if (!rows) return;
+                        rows.appendChild(createClipRow(0, 45, ''));
+                    });
+                }
+
+                const preview = document.getElementById('clips-preview');
+                if (preview) {
+                    preview.addEventListener('loadedmetadata', () => {
+                        clipsPreviewDuration = Math.floor(preview.duration || 0);
+                        Array.from(document.querySelectorAll('#clips-rows .clip-row')).forEach(row => {
+                            const max = Math.max(1, clipsPreviewDuration);
+                            row.querySelector('.clip-in').max = String(max);
+                            row.querySelector('.clip-out').max = String(max);
+                        });
+                        drawTimeline();
+                    });
+                    preview.addEventListener('timeupdate', drawTimeline);
+                }
+
+                const clipsUseCurrentTimeBtn = document.getElementById('clips-use-current-time');
+                if (clipsUseCurrentTimeBtn) {
+                    clipsUseCurrentTimeBtn.addEventListener('click', function() {
+                        const preview = document.getElementById('clips-preview');
+                        const rows = document.getElementById('clips-rows');
+                        if (!preview || !rows) return;
+                        const start = Math.max(0, Math.floor(preview.currentTime || 0));
+                        rows.appendChild(createClipRow(start, 30, 'moment_' + start + 's'));
+                        drawTimeline();
+                    });
+                }
+
+                const clipsCreateBatchBtn = document.getElementById('clips-create-batch-btn');
+                if (clipsCreateBatchBtn) {
+                    clipsCreateBatchBtn.addEventListener('click', async function() {
+                        if (!clipsSelectedRecording) {
+                            setClipsStatus('Select a finished recording first.', true);
+                            return;
+                        }
+                        const rows = Array.from(document.querySelectorAll('#clips-rows .clip-row'));
+                        if (rows.length === 0) {
+                            setClipsStatus('Add at least one clip row.', true);
+                            return;
+                        }
+                        const body = new URLSearchParams();
+                        body.set('source', clipsSelectedRecording);
+                        for (const row of rows) {
+                            const inSec = parseInt(row.querySelector('.clip-in').value || '0', 10);
+                            const outSec = parseInt(row.querySelector('.clip-out').value || '0', 10);
+                            const start = String(Math.max(0, inSec));
+                            const duration = String(Math.max(1, outSec - inSec));
+                            const name = row.querySelector('.clip-name').value || '';
+                            body.append('start_seconds', start);
+                            body.append('duration_seconds', duration);
+                            body.append('name', name);
+                        }
+
+                        clipsCreateBatchBtn.disabled = true;
+                        setClipsStatus('Creating clips...');
+                        try {
+                            const res = await fetch('/api/clip_batch/' + encodeURIComponent(clipsChannelID), {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                body: body.toString(),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) {
+                                throw new Error((data && data.error) || 'batch clip failed');
+                            }
+                            const created = (data && data.created) || [];
+                            const failures = (data && data.failures) || [];
+                            if (failures.length > 0) {
+                                setClipsStatus(`Created ${created.length} clips, ${failures.length} failed.`, true);
+                            } else {
+                                setClipsStatus(`Created ${created.length} clips successfully.`);
+                            }
+                            await loadClips();
+                        } catch (err) {
+                            setClipsStatus('Create clips failed: ' + err.message, true);
+                        } finally {
+                            clipsCreateBatchBtn.disabled = false;
+                        }
+                    });
+                }
+
+                const clipsCombineBtn = document.getElementById('clips-combine-btn');
+                if (clipsCombineBtn) {
+                    clipsCombineBtn.addEventListener('click', async function() {
+                        const checks = Array.from(document.querySelectorAll('.clips-checkbox:checked'));
+                        if (checks.length < 2) {
+                            setClipsStatus('Select at least 2 clips to combine.', true);
+                            return;
+                        }
+                        const name = (document.getElementById('clips-combine-name') || {}).value || '';
+                        clipsCombineBtn.disabled = true;
+                        setClipsStatus('Combining clips...');
+                        try {
+                            const body = new URLSearchParams();
+                            checks.forEach(chk => body.append('clip', chk.value));
+                            body.set('name', name);
+                            const res = await fetch('/api/combine_clips/' + encodeURIComponent(clipsChannelID), {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                body: body.toString(),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) {
+                                throw new Error((data && data.error) || 'combine failed');
+                            }
+                            setClipsStatus('Combined clip created: ' + shortName(data.path));
+                            await loadClips();
+                        } catch (err) {
+                            setClipsStatus('Combine failed: ' + err.message, true);
+                        } finally {
+                            clipsCombineBtn.disabled = false;
+                        }
+                    });
+                }
             });
 
             document.body.querySelectorAll("textarea").forEach((textarea) => {

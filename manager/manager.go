@@ -18,6 +18,7 @@ import (
 	"github.com/HeapOfChaos/goondvr/notifier"
 	"github.com/HeapOfChaos/goondvr/router/view"
 	"github.com/HeapOfChaos/goondvr/server"
+	"github.com/HeapOfChaos/goondvr/uploader"
 	"github.com/r3labs/sse/v2"
 )
 
@@ -57,6 +58,41 @@ func New() (*Manager, error) {
 	m.cfBlocks = make(map[string]time.Time)
 	go m.diskMonitor()
 
+	// Register hooks so the Discord status bot can read channel states and
+	// persist the status message ID without a circular import.
+	notifier.BotChannelsHook = func() []notifier.BotChannel {
+		var out []notifier.BotChannel
+		m.Channels.Range(func(_, v any) bool {
+			ch := v.(*channel.Channel)
+			out = append(out, notifier.BotChannel{
+				Username:  ch.Config.Username,
+				Site:      ch.Config.Site,
+				RoomTitle: ch.RoomTitle,
+				IsOnline:  ch.IsOnline,
+			})
+			return true
+		})
+		return out
+	}
+	notifier.BotMessageIDHook = func(id string) {
+		if err := saveBotMessageID(id); err != nil {
+			fmt.Printf("[WARN] discord bot: save message ID: %v\n", err)
+		}
+	}
+	uploader.StatusUpdateHook = func(channelID string) {
+		if channelID == "" {
+			return
+		}
+		value, ok := m.Channels.Load(channelID)
+		if !ok {
+			return
+		}
+		m.Publish(entity.EventUpdate, value.(*channel.Channel).ExportInfo())
+	}
+	uploader.LogUpdateHook = func() {
+		m.PublishSMBLog()
+	}
+
 	// Send a heartbeat event every 30s so browsers can detect a stale connection
 	// and the SSE extension will reconnect automatically.
 	go func() {
@@ -75,55 +111,96 @@ func New() (*Manager, error) {
 
 // settingsFile is the path to the persisted global settings file.
 const settingsFile = "./conf/settings.json"
+
+// saveBotMessageID updates the in-memory config and flushes it to disk.
+// Defined as a package-level function so the "server" identifier refers to
+// the imported package, not the local sse.Server variable inside New().
+func saveBotMessageID(id string) error {
+	server.Config.DiscordStatusMessageID = id
+	return SaveSettings()
+}
+
 const channelsFile = "./conf/channels.json"
 const legacyDefaultPattern = "videos/{{.Username}}_{{.Year}}-{{.Month}}-{{.Day}}_{{.Hour}}-{{.Minute}}-{{.Second}}{{if .Sequence}}_{{.Sequence}}{{end}}"
 const siteAwareDefaultPattern = "videos/{{if ne .Site \"chaturbate\"}}{{.Site}}/{{end}}{{.Username}}_{{.Year}}-{{.Month}}-{{.Day}}_{{.Hour}}-{{.Minute}}-{{.Second}}{{if .Sequence}}_{{.Sequence}}{{end}}"
 
 // settings holds the subset of global config that can be updated via the web UI.
 type settings struct {
-	Cookies             string `json:"cookies"`
-	UserAgent           string `json:"user_agent"`
-	CompletedDir        string `json:"completed_dir,omitempty"`
-	FinalizeMode        string `json:"finalize_mode,omitempty"`
-	FFmpegEncoder       string `json:"ffmpeg_encoder,omitempty"`
-	FFmpegContainer     string `json:"ffmpeg_container,omitempty"`
-	FFmpegQuality       int    `json:"ffmpeg_quality,omitempty"`
-	FFmpegPreset        string `json:"ffmpeg_preset,omitempty"`
-	NtfyURL             string `json:"ntfy_url,omitempty"`
-	NtfyTopic           string `json:"ntfy_topic,omitempty"`
-	NtfyToken           string `json:"ntfy_token,omitempty"`
-	DiscordWebhookURL   string `json:"discord_webhook_url,omitempty"`
-	DiskWarningPercent  int    `json:"disk_warning_percent,omitempty"`
-	DiskCriticalPercent int    `json:"disk_critical_percent,omitempty"`
-	CFChannelThreshold  int    `json:"cf_channel_threshold,omitempty"`
-	CFGlobalThreshold   int    `json:"cf_global_threshold,omitempty"`
-	NotifyCooldownHours int    `json:"notify_cooldown_hours,omitempty"`
-	NotifyStreamOnline  bool   `json:"notify_stream_online,omitempty"`
-	StripchatPDKey      string `json:"stripchat_pdkey,omitempty"`
+	Cookies                string `json:"cookies"`
+	UserAgent              string `json:"user_agent"`
+	CompletedDir           string `json:"completed_dir,omitempty"`
+	FinalizeMode           string `json:"finalize_mode,omitempty"`
+	FFmpegEncoder          string `json:"ffmpeg_encoder,omitempty"`
+	FFmpegContainer        string `json:"ffmpeg_container,omitempty"`
+	FFmpegQuality          int    `json:"ffmpeg_quality,omitempty"`
+	FFmpegPreset           string `json:"ffmpeg_preset,omitempty"`
+	NtfyURL                string `json:"ntfy_url,omitempty"`
+	NtfyTopic              string `json:"ntfy_topic,omitempty"`
+	NtfyToken              string `json:"ntfy_token,omitempty"`
+	DiscordWebhookURL      string `json:"discord_webhook_url,omitempty"`
+	DiscordBotToken        string `json:"discord_bot_token,omitempty"`
+	DiscordStatusChannelID string `json:"discord_status_channel_id,omitempty"`
+	DiscordStatusMessageID string `json:"discord_status_message_id,omitempty"`
+	DiskWarningPercent     int    `json:"disk_warning_percent,omitempty"`
+	DiskCriticalPercent    int    `json:"disk_critical_percent,omitempty"`
+	CFChannelThreshold     int    `json:"cf_channel_threshold,omitempty"`
+	CFGlobalThreshold      int    `json:"cf_global_threshold,omitempty"`
+	NotifyCooldownHours    int    `json:"notify_cooldown_hours,omitempty"`
+	NotifyStreamOnline     bool   `json:"notify_stream_online,omitempty"`
+	StripchatPDKey         string `json:"stripchat_pdkey,omitempty"`
+	N8NWebhookURL          string `json:"n8n_webhook_url,omitempty"`
+	N8NToken               string `json:"n8n_token,omitempty"`
+	NightOpsEnabled        bool   `json:"night_ops_enabled,omitempty"`
+	NightOpsStartHour      int    `json:"night_ops_start_hour,omitempty"`
+	NightOpsEndHour        int    `json:"night_ops_end_hour,omitempty"`
+	NightOpsRetrySeconds   int    `json:"night_ops_retry_seconds,omitempty"`
+	SMBUploadEnabled       bool   `json:"smb_upload_enabled,omitempty"`
+	SMBUploadHost          string `json:"smb_upload_host,omitempty"`
+	SMBUploadShare         string `json:"smb_upload_share,omitempty"`
+	SMBUploadUsername      string `json:"smb_upload_username,omitempty"`
+	SMBUploadPassword      string `json:"smb_upload_password,omitempty"`
+	SMBUploadDomain        string `json:"smb_upload_domain,omitempty"`
+	SMBUploadBaseDir       string `json:"smb_upload_base_dir,omitempty"`
 }
 
 // SaveSettings persists the current cookies and user-agent to disk.
 func SaveSettings() error {
 	s := settings{
-		Cookies:             server.Config.Cookies,
-		UserAgent:           server.Config.UserAgent,
-		CompletedDir:        server.Config.CompletedDir,
-		FinalizeMode:        server.Config.FinalizeMode,
-		FFmpegEncoder:       server.Config.FFmpegEncoder,
-		FFmpegContainer:     server.Config.FFmpegContainer,
-		FFmpegQuality:       server.Config.FFmpegQuality,
-		FFmpegPreset:        server.Config.FFmpegPreset,
-		NtfyURL:             server.Config.NtfyURL,
-		NtfyTopic:           server.Config.NtfyTopic,
-		NtfyToken:           server.Config.NtfyToken,
-		DiscordWebhookURL:   server.Config.DiscordWebhookURL,
-		DiskWarningPercent:  server.Config.DiskWarningPercent,
-		DiskCriticalPercent: server.Config.DiskCriticalPercent,
-		CFChannelThreshold:  server.Config.CFChannelThreshold,
-		CFGlobalThreshold:   server.Config.CFGlobalThreshold,
-		NotifyCooldownHours: server.Config.NotifyCooldownHours,
-		NotifyStreamOnline:  server.Config.NotifyStreamOnline,
-		StripchatPDKey:      server.Config.StripchatPDKey,
+		Cookies:                server.Config.Cookies,
+		UserAgent:              server.Config.UserAgent,
+		CompletedDir:           server.Config.CompletedDir,
+		FinalizeMode:           server.Config.FinalizeMode,
+		FFmpegEncoder:          server.Config.FFmpegEncoder,
+		FFmpegContainer:        server.Config.FFmpegContainer,
+		FFmpegQuality:          server.Config.FFmpegQuality,
+		FFmpegPreset:           server.Config.FFmpegPreset,
+		NtfyURL:                server.Config.NtfyURL,
+		NtfyTopic:              server.Config.NtfyTopic,
+		NtfyToken:              server.Config.NtfyToken,
+		DiscordWebhookURL:      server.Config.DiscordWebhookURL,
+		DiscordBotToken:        server.Config.DiscordBotToken,
+		DiscordStatusChannelID: server.Config.DiscordStatusChannelID,
+		DiscordStatusMessageID: server.Config.DiscordStatusMessageID,
+		DiskWarningPercent:     server.Config.DiskWarningPercent,
+		DiskCriticalPercent:    server.Config.DiskCriticalPercent,
+		CFChannelThreshold:     server.Config.CFChannelThreshold,
+		CFGlobalThreshold:      server.Config.CFGlobalThreshold,
+		NotifyCooldownHours:    server.Config.NotifyCooldownHours,
+		NotifyStreamOnline:     server.Config.NotifyStreamOnline,
+		StripchatPDKey:         server.Config.StripchatPDKey,
+		N8NWebhookURL:          server.Config.N8NWebhookURL,
+		N8NToken:               server.Config.N8NToken,
+		NightOpsEnabled:        server.Config.NightOpsEnabled,
+		NightOpsStartHour:      server.Config.NightOpsStartHour,
+		NightOpsEndHour:        server.Config.NightOpsEndHour,
+		NightOpsRetrySeconds:   server.Config.NightOpsRetrySeconds,
+		SMBUploadEnabled:       server.Config.SMBUploadEnabled,
+		SMBUploadHost:          server.Config.SMBUploadHost,
+		SMBUploadShare:         server.Config.SMBUploadShare,
+		SMBUploadUsername:      server.Config.SMBUploadUsername,
+		SMBUploadPassword:      server.Config.SMBUploadPassword,
+		SMBUploadDomain:        server.Config.SMBUploadDomain,
+		SMBUploadBaseDir:       server.Config.SMBUploadBaseDir,
 	}
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
@@ -169,6 +246,9 @@ func LoadSettings() error {
 	server.Config.FFmpegPreset = s.FFmpegPreset
 	server.Config.DiscordWebhookURL = s.DiscordWebhookURL
 	server.Config.NotifyStreamOnline = s.NotifyStreamOnline
+	server.Config.DiscordBotToken = s.DiscordBotToken
+	server.Config.DiscordStatusChannelID = s.DiscordStatusChannelID
+	server.Config.DiscordStatusMessageID = s.DiscordStatusMessageID
 
 	server.Config.DiskWarningPercent = s.DiskWarningPercent
 	if server.Config.DiskWarningPercent <= 0 {
@@ -190,6 +270,28 @@ func LoadSettings() error {
 	if server.Config.NotifyCooldownHours <= 0 {
 		server.Config.NotifyCooldownHours = 4
 	}
+	server.Config.N8NWebhookURL = s.N8NWebhookURL
+	server.Config.N8NToken = s.N8NToken
+	server.Config.NightOpsEnabled = s.NightOpsEnabled
+	server.Config.NightOpsStartHour = s.NightOpsStartHour
+	server.Config.NightOpsEndHour = s.NightOpsEndHour
+	server.Config.NightOpsRetrySeconds = s.NightOpsRetrySeconds
+	if server.Config.NightOpsStartHour < 0 || server.Config.NightOpsStartHour > 23 {
+		server.Config.NightOpsStartHour = 0
+	}
+	if server.Config.NightOpsEndHour < 0 || server.Config.NightOpsEndHour > 23 {
+		server.Config.NightOpsEndHour = 6
+	}
+	if server.Config.NightOpsRetrySeconds <= 0 {
+		server.Config.NightOpsRetrySeconds = 5
+	}
+	server.Config.SMBUploadEnabled = s.SMBUploadEnabled
+	server.Config.SMBUploadHost = s.SMBUploadHost
+	server.Config.SMBUploadShare = s.SMBUploadShare
+	server.Config.SMBUploadUsername = s.SMBUploadUsername
+	server.Config.SMBUploadPassword = s.SMBUploadPassword
+	server.Config.SMBUploadDomain = s.SMBUploadDomain
+	server.Config.SMBUploadBaseDir = s.SMBUploadBaseDir
 	if s.StripchatPDKey != "" {
 		server.Config.StripchatPDKey = s.StripchatPDKey
 	}
@@ -488,6 +590,88 @@ func (m *Manager) ResumeChannel(channelID string) error {
 	return nil
 }
 
+// CreateClip creates a short clip from the currently recording segment.
+func (m *Manager) CreateClip(channelID string, seconds int) (string, error) {
+	thing, ok := m.Channels.Load(channelID)
+	if !ok {
+		return "", fmt.Errorf("channel not found")
+	}
+	ch := thing.(*channel.Channel)
+	out, err := ch.CreateClipLastSeconds(seconds)
+	if err != nil {
+		ch.Error("clip failed: %s", err.Error())
+		return "", err
+	}
+	return out, nil
+}
+
+func (m *Manager) ListRecordings(channelID string) ([]string, error) {
+	thing, ok := m.Channels.Load(channelID)
+	if !ok {
+		return nil, fmt.Errorf("channel not found")
+	}
+	return thing.(*channel.Channel).ListRecordings(), nil
+}
+
+func (m *Manager) ListClips(channelID string) ([]string, error) {
+	thing, ok := m.Channels.Load(channelID)
+	if !ok {
+		return nil, fmt.Errorf("channel not found")
+	}
+	return thing.(*channel.Channel).ListClips(), nil
+}
+
+func (m *Manager) CreateClipFromRecording(channelID, source string, startSeconds, durationSeconds int, clipName string) (string, error) {
+	thing, ok := m.Channels.Load(channelID)
+	if !ok {
+		return "", fmt.Errorf("channel not found")
+	}
+	ch := thing.(*channel.Channel)
+	out, err := ch.CreateClipFromRecording(source, startSeconds, durationSeconds, clipName)
+	if err != nil {
+		ch.Error("clip from recording failed: %s", err.Error())
+		return "", err
+	}
+	return out, nil
+}
+
+func (m *Manager) CombineClips(channelID string, clips []string, outputName string) (string, error) {
+	thing, ok := m.Channels.Load(channelID)
+	if !ok {
+		return "", fmt.Errorf("channel not found")
+	}
+	ch := thing.(*channel.Channel)
+	out, err := ch.CombineClips(clips, outputName)
+	if err != nil {
+		ch.Error("combine clips failed: %s", err.Error())
+		return "", err
+	}
+	return out, nil
+}
+
+// UpdateChannelSettings updates recording settings for an existing channel.
+func (m *Manager) UpdateChannelSettings(channelID string, framerate, resolution int, pattern string, maxDuration, maxFilesize int) error {
+	thing, ok := m.Channels.Load(channelID)
+	if !ok {
+		return fmt.Errorf("channel not found")
+	}
+	ch := thing.(*channel.Channel)
+	ch.Config.Framerate = framerate
+	ch.Config.Resolution = resolution
+	ch.Config.Pattern = strings.TrimSpace(pattern)
+	ch.Config.MaxDuration = maxDuration
+	ch.Config.MaxFilesize = maxFilesize
+	if ch.Config.Pattern == "" {
+		ch.Config.Pattern = siteAwareDefaultPattern
+	}
+	ch.Info("channel settings updated")
+	ch.Update()
+	if err := m.SaveConfig(); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+	return nil
+}
+
 // ChannelInfo returns a list of channel information for the web UI.
 func (m *Manager) ChannelInfo() []*entity.ChannelInfo {
 	var channels []*entity.ChannelInfo
@@ -546,6 +730,14 @@ func (m *Manager) Publish(evt entity.Event, info *entity.ChannelInfo) {
 			Data:  []byte(strings.Join(info.Logs, "\n")),
 		})
 	}
+}
+
+func (m *Manager) PublishSMBLog() {
+	logs := uploader.GetLogs()
+	m.SSE.Publish("updates", &sse.Event{
+		Event: []byte("smb-log"),
+		Data:  []byte(strings.Join(logs, "\n")),
+	})
 }
 
 func withViewMode(info *entity.ChannelInfo, mode string) *entity.ChannelInfo {

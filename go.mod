@@ -8,6 +8,7 @@ require (
 	github.com/avast/retry-go/v4 v4.6.1
 	github.com/gin-gonic/gin v1.10.0
 	github.com/grafov/m3u8 v0.12.1
+	github.com/hirochachacha/go-smb2 v1.1.0
 	github.com/r3labs/sse/v2 v2.10.0
 	github.com/samber/lo v1.49.1
 	github.com/urfave/cli/v2 v2.27.6
@@ -20,6 +21,7 @@ require (
 	github.com/cloudwego/iasm v0.2.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
+	github.com/geoffgarside/ber v1.1.0 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect

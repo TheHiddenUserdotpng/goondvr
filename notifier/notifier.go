@@ -10,11 +10,11 @@ import (
 
 // Cooldown key helpers — use these to build consistent keys.
 const (
-	KeyStreamOnline = "stream_online:%s"  // % username
-	KeyCFChannel    = "cf_channel:%s"     // % username
+	KeyStreamOnline = "stream_online:%s" // % username
+	KeyCFChannel    = "cf_channel:%s"    // % username
 	KeyCFGlobal     = "cf_global"
-	KeyDiskWarning  = "disk_warning:%s"   // % path
-	KeyDiskCritical = "disk_critical:%s"  // % path
+	KeyDiskWarning  = "disk_warning:%s"  // % path
+	KeyDiskCritical = "disk_critical:%s" // % path
 )
 
 // Default is the package-level notifier singleton.
@@ -66,6 +66,11 @@ func Notify(key, title, message string) {
 	if cfg.DiscordWebhookURL != "" {
 		if err := sendDiscord(cfg.DiscordWebhookURL, title, message); err != nil {
 			fmt.Printf("[WARN] discord: %v\n", err)
+		}
+	}
+	if cfg.N8NWebhookURL != "" {
+		if err := sendN8N(cfg.N8NWebhookURL, cfg.N8NToken, key, title, message); err != nil {
+			fmt.Printf("[WARN] n8n: %v\n", err)
 		}
 	}
 }

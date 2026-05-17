@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/HeapOfChaos/goondvr/entity"
 	"github.com/HeapOfChaos/goondvr/internal"
+	"github.com/HeapOfChaos/goondvr/notifier"
 	"github.com/HeapOfChaos/goondvr/server"
+	"github.com/HeapOfChaos/goondvr/uploader"
 )
 
 // Channel represents a channel instance.
@@ -35,6 +38,8 @@ type Channel struct {
 	SummaryCardImage    string
 	LiveThumbURL        string
 	CFBlockCount        int
+	RetryCount          int
+	SegmentErrorCount   int
 
 	logsMu sync.RWMutex
 	Logs   []string
@@ -162,10 +167,25 @@ func (ch *Channel) ExportInfo() *entity.ChannelInfo {
 		site = "chaturbate"
 	}
 
+	channelID := entity.ChannelID(ch.Config.Site, ch.Config.Username)
+	smbStatus := uploader.GetChannelStatus(channelID)
+	smbUpdatedAt := ""
+	if !smbStatus.UpdatedAt.IsZero() {
+		smbUpdatedAt = smbStatus.UpdatedAt.Format("15:04:05")
+	}
+
 	return &entity.ChannelInfo{
-		ChannelID:        entity.ChannelID(ch.Config.Site, ch.Config.Username),
+		ChannelID:        channelID,
 		IsOnline:         ch.IsOnline,
 		IsPaused:         ch.Config.IsPaused,
+		HealthScore:      ch.healthScore(),
+		HealthStatus:     ch.healthStatus(),
+		HealthSummary:    ch.healthSummary(),
+		Framerate:        ch.Config.Framerate,
+		Resolution:       ch.Config.Resolution,
+		Pattern:          ch.Config.Pattern,
+		MaxDurationValue: ch.Config.MaxDuration,
+		MaxFilesizeValue: ch.Config.MaxFilesize,
 		Username:         ch.Config.Username,
 		MaxDuration:      internal.FormatDuration(float64(ch.Config.MaxDuration * 60)), // MaxDuration from config is in minutes
 		MaxFilesize:      internal.FormatFilesize(ch.Config.MaxFilesize * 1024 * 1024), // MaxFilesize from config is in MB
@@ -185,7 +205,54 @@ func (ch *Channel) ExportInfo() *entity.ChannelInfo {
 		LiveThumbURL:     ch.LiveThumbURL,
 		Site:             site,
 		SiteDomain:       siteDomain,
+		SMBStatusLevel:   smbStatus.Level,
+		SMBStatusText:    smbStatus.Text,
+		SMBUpdatedAt:     smbUpdatedAt,
 	}
+}
+
+func (ch *Channel) healthScore() int {
+	if ch.Config.IsPaused {
+		return 0
+	}
+	if !ch.IsOnline {
+		return 100
+	}
+	score := 100.0
+	score -= math.Min(float64(ch.RetryCount*8), 40)
+	score -= math.Min(float64(ch.SegmentErrorCount*15), 45)
+	score -= math.Min(float64(ch.CFBlockCount*12), 36)
+	if score < 0 {
+		score = 0
+	}
+	return int(score)
+}
+
+func (ch *Channel) healthStatus() string {
+	score := ch.healthScore()
+	if ch.Config.IsPaused {
+		return "paused"
+	}
+	if !ch.IsOnline {
+		return "idle"
+	}
+	if score >= 80 {
+		return "good"
+	}
+	if score >= 55 {
+		return "warn"
+	}
+	return "bad"
+}
+
+func (ch *Channel) healthSummary() string {
+	if ch.Config.IsPaused {
+		return "Paused"
+	}
+	if !ch.IsOnline {
+		return "Idle"
+	}
+	return fmt.Sprintf("retries:%d segment_err:%d cf:%d", ch.RetryCount, ch.SegmentErrorCount, ch.CFBlockCount)
 }
 
 // Pause pauses the channel and cancels the context.
@@ -242,6 +309,7 @@ func (ch *Channel) UpdateOnlineStatus(isOnline bool) {
 	}
 	ch.UpdateThumb()
 	ch.Update()
+	notifier.StatusBot.Refresh()
 }
 
 // UpdateThumb sends a thumbnail-only update signal to the publisher.

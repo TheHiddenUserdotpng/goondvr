@@ -13,6 +13,12 @@ type IManager interface {
 	StopChannel(channelID string) error
 	PauseChannel(channelID string) error
 	ResumeChannel(channelID string) error
+	CreateClip(channelID string, seconds int) (string, error)
+	ListRecordings(channelID string) ([]string, error)
+	ListClips(channelID string) ([]string, error)
+	CreateClipFromRecording(channelID, source string, startSeconds, durationSeconds int, clipName string) (string, error)
+	CombineClips(channelID string, clips []string, outputName string) (string, error)
+	UpdateChannelSettings(channelID string, framerate, resolution int, pattern string, maxDuration, maxFilesize int) error
 	ChannelInfo() []*entity.ChannelInfo
 	Publish(name string, ch *entity.ChannelInfo)
 	Subscriber(w http.ResponseWriter, r *http.Request)

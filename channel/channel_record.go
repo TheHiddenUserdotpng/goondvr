@@ -72,8 +72,37 @@ func (ch *Channel) Monitor(runID uint64) {
 				errors.Is(err, internal.ErrCloudflareBlocked) ||
 				errors.Is(err, internal.ErrRoomPasswordRequired)
 		}
+		retryDelay := func(err error) time.Duration {
+			if isExpectedOffline(err) {
+				base := time.Duration(server.Config.Interval) * time.Minute
+				if server.IsNightOpsActive() {
+					base = base / 2
+					if base < 30*time.Second {
+						base = 30 * time.Second
+					}
+				}
+				jitter := time.Duration(rand.Int63n(int64(base/5))) - base/10 // ±10% of interval
+				return base + jitter
+			}
+			retrySeconds := 10
+			if server.IsNightOpsActive() {
+				retrySeconds = server.Config.NightOpsRetrySeconds
+				if retrySeconds <= 0 {
+					retrySeconds = 5
+				}
+			}
+			return time.Duration(retrySeconds) * time.Second
+		}
+		formatDelay := func(d time.Duration) string {
+			if d >= time.Minute {
+				return fmt.Sprintf("%d min(s)", int(d.Round(time.Minute)/time.Minute))
+			}
+			return fmt.Sprintf("%d sec(s)", int(d.Round(time.Second)/time.Second))
+		}
 		onRetry := func(_ uint, err error) {
+			ch.RetryCount++
 			ch.UpdateOnlineStatus(false)
+			delay := retryDelay(err)
 
 			// Reset CF block count whenever a non-CF response is received.
 			if !errors.Is(err, internal.ErrCloudflareBlocked) && ch.CFBlockCount > 0 {
@@ -83,11 +112,11 @@ func (ch *Channel) Monitor(runID uint64) {
 			}
 
 			if errors.Is(err, internal.ErrChannelOffline) {
-				ch.Info("channel is offline, try again in %d min(s)", server.Config.Interval)
+				ch.Info("channel is offline, try again in %s", formatDelay(delay))
 			} else if errors.Is(err, internal.ErrPrivateStream) {
-				ch.Info("channel is in a private show, try again in %d min(s)", server.Config.Interval)
+				ch.Info("channel is in a private show, try again in %s", formatDelay(delay))
 			} else if errors.Is(err, internal.ErrHiddenStream) {
-				ch.Info("channel is hidden, try again in %d min(s)", server.Config.Interval)
+				ch.Info("channel is hidden, try again in %s", formatDelay(delay))
 			} else if errors.Is(err, internal.ErrCloudflareBlocked) {
 				ch.CFBlockCount++
 				cfThresh := server.Config.CFChannelThreshold
@@ -102,25 +131,19 @@ func (ch *Channel) Monitor(runID uint64) {
 					)
 				}
 				server.Manager.ReportCFBlock(ch.Config.Username)
-				ch.Info("channel was blocked by Cloudflare; try with `-cookies` and `-user-agent`? try again in %d min(s)", server.Config.Interval)
+				ch.Info("channel was blocked by Cloudflare; try with `-cookies` and `-user-agent`? try again in %s", formatDelay(delay))
 			} else if errors.Is(err, internal.ErrAgeVerification) {
-				ch.Info("age verification required; pass cookies with `-cookies` to authenticate, try again in %d min(s)", server.Config.Interval)
+				ch.Info("age verification required; pass cookies with `-cookies` to authenticate, try again in %s", formatDelay(delay))
 			} else if errors.Is(err, internal.ErrRoomPasswordRequired) {
-				ch.Info("room requires a password, try again in %d min(s)", server.Config.Interval)
+				ch.Info("room requires a password, try again in %s", formatDelay(delay))
 			} else if errors.Is(err, context.Canceled) {
 				// ...
 			} else {
-				ch.Error("on retry: %s: retrying in 10s", err.Error())
+				ch.Error("on retry: %s: retrying in %s", err.Error(), formatDelay(delay))
 			}
 		}
 		delayFn := func(_ uint, err error, _ *retry.Config) time.Duration {
-			if isExpectedOffline(err) {
-				base := time.Duration(server.Config.Interval) * time.Minute
-				jitter := time.Duration(rand.Int63n(int64(base/5))) - base/10 // ±10% of interval
-				return base + jitter
-			}
-			// Transient error (502, decode failure, network hiccup) - recover quickly
-			return 10 * time.Second
+			return retryDelay(err)
 		}
 		if err = retry.Do(
 			pipeline,
@@ -229,6 +252,8 @@ func (ch *Channel) RecordStream(ctx context.Context, runID uint64, s site.Site, 
 	}()
 
 	ch.UpdateOnlineStatus(true) // Update online status after playlist is OK
+	ch.RetryCount = 0
+	ch.SegmentErrorCount = 0
 
 	// Reset CF state on successful stream start.
 	ch.CFBlockCount = 0
@@ -276,6 +301,7 @@ func (ch *Channel) handleSegmentForMonitor(runID uint64, b []byte, duration floa
 	}
 
 	if ch.File == nil {
+		ch.SegmentErrorCount++
 		ch.fileMu.Unlock()
 		return fmt.Errorf("write file: no active file")
 	}
@@ -286,6 +312,7 @@ func (ch *Channel) handleSegmentForMonitor(runID uint64, b []byte, duration floa
 	if ch.FileExt == ".mp4" && ch.Filesize == 0 && !isMP4InitSegment(b) && len(ch.mp4InitSegment) > 0 {
 		n, err := ch.File.Write(ch.mp4InitSegment)
 		if err != nil {
+			ch.SegmentErrorCount++
 			ch.fileMu.Unlock()
 			return fmt.Errorf("write mp4 init segment: %w", err)
 		}
@@ -294,6 +321,7 @@ func (ch *Channel) handleSegmentForMonitor(runID uint64, b []byte, duration floa
 
 	n, err := ch.File.Write(b)
 	if err != nil {
+		ch.SegmentErrorCount++
 		ch.fileMu.Unlock()
 		return fmt.Errorf("write file: %w", err)
 	}

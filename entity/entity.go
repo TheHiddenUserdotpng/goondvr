@@ -71,6 +71,14 @@ type ChannelInfo struct {
 	ViewMode         string
 	IsOnline         bool
 	IsPaused         bool
+	HealthScore      int
+	HealthStatus     string
+	HealthSummary    string
+	Framerate        int
+	Resolution       int
+	Pattern          string
+	MaxDurationValue int
+	MaxFilesizeValue int
 	Username         string
 	Duration         string
 	Filesize         string
@@ -90,6 +98,9 @@ type ChannelInfo struct {
 	LiveThumbURL     string // live-updating thumbnail; empty = use platform default
 	Site             string // "chaturbate" (default) or "stripchat"
 	SiteDomain       string // pre-computed site URL, e.g. "https://chaturbate.com/" or "https://stripchat.com/"
+	SMBStatusLevel   string
+	SMBStatusText    string
+	SMBUpdatedAt     string
 }
 
 // Config holds the configuration for the application.
@@ -118,15 +129,34 @@ type Config struct {
 	Debug           bool
 
 	// Notification settings — persisted in settings.json, configured via web UI.
-	NtfyURL             string
-	NtfyTopic           string
-	NtfyToken           string
-	DiscordWebhookURL   string
-	DiskWarningPercent  int // notify when disk usage exceeds this %; default 80
-	DiskCriticalPercent int // notify when disk usage exceeds this %; default 90
-	CFChannelThreshold  int // consecutive CF blocks before per-channel alert; default 5
-	CFGlobalThreshold   int // channels hitting CF in same window for global alert; default 3
-	NotifyCooldownHours int // hours between repeated alerts of the same type; default 4
-	NotifyStreamOnline  bool
-	StripchatPDKey      string // MOUFLON v2 decryption key; auto-extracted or manual override
+	NtfyURL                string
+	NtfyTopic              string
+	NtfyToken              string
+	DiscordWebhookURL      string
+	DiscordBotToken        string
+	DiscordStatusChannelID string
+	DiscordStatusMessageID string
+	DiskWarningPercent     int // notify when disk usage exceeds this %; default 80
+	DiskCriticalPercent    int // notify when disk usage exceeds this %; default 90
+	CFChannelThreshold     int // consecutive CF blocks before per-channel alert; default 5
+	CFGlobalThreshold      int // channels hitting CF in same window for global alert; default 3
+	NotifyCooldownHours    int // hours between repeated alerts of the same type; default 4
+	NotifyStreamOnline     bool
+	StripchatPDKey         string // MOUFLON v2 decryption key; auto-extracted or manual override
+	N8NWebhookURL          string
+	N8NToken               string
+
+	NightOpsEnabled      bool
+	NightOpsStartHour    int
+	NightOpsEndHour      int
+	NightOpsRetrySeconds int
+
+	// Optional SMB upload settings for TrueNAS or other SMB servers.
+	SMBUploadEnabled  bool
+	SMBUploadHost     string
+	SMBUploadShare    string
+	SMBUploadUsername string
+	SMBUploadPassword string
+	SMBUploadDomain   string
+	SMBUploadBaseDir  string
 }

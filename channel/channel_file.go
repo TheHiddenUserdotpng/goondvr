@@ -11,13 +11,18 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/HeapOfChaos/goondvr/chaturbate"
+	"github.com/HeapOfChaos/goondvr/entity"
 	"github.com/HeapOfChaos/goondvr/server"
+	"github.com/HeapOfChaos/goondvr/uploader"
 )
 
 // Pattern holds the date/time and sequence information for the filename pattern
@@ -306,6 +311,11 @@ func (ch *Channel) finalizeRecording(filename string) {
 			ch.Error("move completed recording `%s`: %s", finalPath, err.Error())
 		} else {
 			ch.Info("completed recording moved to `%s`", dst)
+			rel := filepath.Base(dst)
+			if r, relErr := filepath.Rel(completedDir, dst); relErr == nil && r != "" && r != "." && !strings.HasPrefix(r, "..") {
+				rel = filepath.ToSlash(r)
+			}
+			uploader.UploadIfEnabled(entity.ChannelID(ch.Config.Site, ch.Config.Username), dst, path.Join("completed", rel))
 		}
 	}
 
@@ -378,6 +388,361 @@ func copyFile(src, dst string) error {
 		return fmt.Errorf("sync destination file: %w", err)
 	}
 	return nil
+}
+
+// CreateClipLastSeconds creates a clip from the tail of the currently open
+// recording file. It returns the created clip path.
+func (ch *Channel) CreateClipLastSeconds(seconds int) (string, error) {
+	if seconds <= 0 {
+		seconds = 45
+	}
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return "", fmt.Errorf("ffmpeg not found in PATH")
+	}
+
+	ch.fileMu.RLock()
+	var src string
+	if ch.File != nil {
+		src = ch.File.Name()
+	}
+	ch.fileMu.RUnlock()
+	if src == "" {
+		src = latestChannelRecording(ch)
+		if src == "" {
+			return "", fmt.Errorf("no recording file found for clip")
+		}
+	}
+
+	if _, err := os.Stat(src); err != nil {
+		return "", fmt.Errorf("stat source file: %w", err)
+	}
+
+	clipDir := filepath.Join(recordingDirFromPattern(ch.Config.Pattern), "clips", ch.Config.Site, ch.Config.Username)
+	if err := os.MkdirAll(clipDir, 0755); err != nil {
+		return "", fmt.Errorf("mkdir clip dir: %w", err)
+	}
+
+	now := time.Now().UTC().Format("20060102_150405")
+	clipName := fmt.Sprintf("%s_clip_%ds_%s.mp4", ch.Config.Username, seconds, now)
+	outPath := filepath.Join(clipDir, clipName)
+	tmpPath := outPath + ".tmp.mp4"
+	_ = os.Remove(tmpPath)
+
+	args := []string{
+		"-nostdin", "-y",
+		"-sseof", fmt.Sprintf("-%d", seconds),
+		"-i", src,
+		"-map", "0",
+		"-c", "copy",
+		"-movflags", "+faststart",
+		tmpPath,
+	}
+	cmd := exec.Command("ffmpeg", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("ffmpeg clip failed: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+
+	if err := os.Rename(tmpPath, outPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("finalize clip file: %w", err)
+	}
+
+	ch.Info("clip created: `%s`", outPath)
+	uploader.UploadIfEnabled(entity.ChannelID(ch.Config.Site, ch.Config.Username), outPath, path.Join("clips", ch.Config.Site, ch.Config.Username, filepath.Base(outPath)))
+	go ch.ScanTotalDiskUsage()
+	return outPath, nil
+}
+
+func latestChannelRecording(ch *Channel) string {
+	recordingDir := filepath.Clean(recordingDirFromPattern(ch.Config.Pattern))
+	dirs := []string{recordingDir, completedDirForChannel(ch)}
+	prefix := ch.Config.Username
+	var newest string
+	var newestMod time.Time
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			base := filepath.Base(path)
+			if !strings.HasPrefix(base, prefix) {
+				return nil
+			}
+			ext := strings.ToLower(filepath.Ext(base))
+			if ext != ".mp4" && ext != ".mkv" && ext != ".ts" {
+				return nil
+			}
+			if strings.Contains(path, string(filepath.Separator)+"clips"+string(filepath.Separator)) {
+				return nil
+			}
+			info, infoErr := d.Info()
+			if infoErr != nil {
+				return nil
+			}
+			if info.ModTime().After(newestMod) {
+				newestMod = info.ModTime()
+				newest = path
+			}
+			return nil
+		})
+	}
+	return newest
+}
+
+func clipsDirForChannel(ch *Channel) string {
+	return filepath.Join(recordingDirFromPattern(ch.Config.Pattern), "clips", ch.Config.Site, ch.Config.Username)
+}
+
+func (ch *Channel) ListRecordings() []string {
+	return listChannelMediaFiles(ch, false)
+}
+
+func (ch *Channel) ListClips() []string {
+	dir := clipsDirForChannel(ch)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	paths := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(e.Name()))
+		if ext != ".mp4" && ext != ".mkv" {
+			continue
+		}
+		paths = append(paths, filepath.Join(dir, e.Name()))
+	}
+	sort.Slice(paths, func(i, j int) bool {
+		infoI, errI := os.Stat(paths[i])
+		infoJ, errJ := os.Stat(paths[j])
+		if errI != nil || errJ != nil {
+			return paths[i] > paths[j]
+		}
+		return infoI.ModTime().After(infoJ.ModTime())
+	})
+	return paths
+}
+
+func (ch *Channel) CreateClipFromRecording(source string, startSeconds, durationSeconds int, clipName string) (string, error) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return "", fmt.Errorf("ffmpeg not found in PATH")
+	}
+	if durationSeconds <= 0 {
+		durationSeconds = 45
+	}
+	if durationSeconds > 3600 {
+		durationSeconds = 3600
+	}
+	if startSeconds < 0 {
+		startSeconds = 0
+	}
+
+	if source == "" {
+		return "", fmt.Errorf("source recording is required")
+	}
+	if !ch.isAllowedRecordingPath(source) {
+		return "", fmt.Errorf("recording is outside allowed directories")
+	}
+	if _, err := os.Stat(source); err != nil {
+		return "", fmt.Errorf("source recording does not exist")
+	}
+
+	clipDir := clipsDirForChannel(ch)
+	if err := os.MkdirAll(clipDir, 0755); err != nil {
+		return "", fmt.Errorf("mkdir clip dir: %w", err)
+	}
+
+	base := sanitizeClipName(clipName)
+	if base == "" {
+		base = ch.Config.Username + "_moment_" + time.Now().UTC().Format("20060102_150405")
+	}
+	outPath := filepath.Join(clipDir, base+".mp4")
+	tmpPath := outPath + ".tmp.mp4"
+	_ = os.Remove(tmpPath)
+
+	args := []string{
+		"-nostdin", "-y",
+		"-ss", strconv.Itoa(startSeconds),
+		"-i", source,
+		"-t", strconv.Itoa(durationSeconds),
+		"-map", "0",
+		"-c", "copy",
+		"-movflags", "+faststart",
+		tmpPath,
+	}
+	cmd := exec.Command("ffmpeg", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("ffmpeg clip failed: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+	if err := os.Rename(tmpPath, outPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("finalize clip file: %w", err)
+	}
+
+	ch.Info("clip created from recording: `%s`", outPath)
+	uploader.UploadIfEnabled(entity.ChannelID(ch.Config.Site, ch.Config.Username), outPath, path.Join("clips", ch.Config.Site, ch.Config.Username, filepath.Base(outPath)))
+	return outPath, nil
+}
+
+func (ch *Channel) CombineClips(clips []string, outputName string) (string, error) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return "", fmt.Errorf("ffmpeg not found in PATH")
+	}
+	if len(clips) < 2 {
+		return "", fmt.Errorf("select at least 2 clips")
+	}
+
+	allowed := make(map[string]struct{})
+	for _, p := range ch.ListClips() {
+		allowed[filepath.Clean(p)] = struct{}{}
+	}
+
+	validated := make([]string, 0, len(clips))
+	for _, c := range clips {
+		clean := filepath.Clean(c)
+		if _, ok := allowed[clean]; !ok {
+			return "", fmt.Errorf("invalid clip selection")
+		}
+		validated = append(validated, clean)
+	}
+
+	clipDir := clipsDirForChannel(ch)
+	if err := os.MkdirAll(clipDir, 0755); err != nil {
+		return "", fmt.Errorf("mkdir clip dir: %w", err)
+	}
+
+	base := sanitizeClipName(outputName)
+	if base == "" {
+		base = ch.Config.Username + "_highlights_" + time.Now().UTC().Format("20060102_150405")
+	}
+	outPath := filepath.Join(clipDir, base+".mp4")
+	tmpOut := outPath + ".tmp.mp4"
+	listFile := filepath.Join(clipDir, ".concat_"+time.Now().UTC().Format("20060102150405")+".txt")
+
+	var b strings.Builder
+	for _, p := range validated {
+		escaped := strings.ReplaceAll(p, "'", "'\\''")
+		b.WriteString("file '")
+		b.WriteString(escaped)
+		b.WriteString("'\n")
+	}
+	if err := os.WriteFile(listFile, []byte(b.String()), 0600); err != nil {
+		return "", fmt.Errorf("write concat list: %w", err)
+	}
+	defer os.Remove(listFile)
+	_ = os.Remove(tmpOut)
+
+	args := []string{"-nostdin", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-c", "copy", "-movflags", "+faststart", tmpOut}
+	cmd := exec.Command("ffmpeg", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("ffmpeg concat failed: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+	if err := os.Rename(tmpOut, outPath); err != nil {
+		_ = os.Remove(tmpOut)
+		return "", fmt.Errorf("finalize combined clip: %w", err)
+	}
+
+	ch.Info("combined clip created: `%s`", outPath)
+	uploader.UploadIfEnabled(entity.ChannelID(ch.Config.Site, ch.Config.Username), outPath, path.Join("clips", ch.Config.Site, ch.Config.Username, filepath.Base(outPath)))
+	return outPath, nil
+}
+
+func (ch *Channel) isAllowedRecordingPath(path string) bool {
+	cleanPath := filepath.Clean(path)
+	recordingRoot := filepath.Clean(recordingDirFromPattern(ch.Config.Pattern))
+	completedRoot := filepath.Clean(completedDirForChannel(ch))
+	inside := func(root string) bool {
+		if root == "" {
+			return false
+		}
+		return cleanPath == root || strings.HasPrefix(cleanPath+string(os.PathSeparator), root+string(os.PathSeparator)) || strings.HasPrefix(cleanPath, root+string(os.PathSeparator))
+	}
+	if !inside(recordingRoot) && !inside(completedRoot) {
+		return false
+	}
+	if strings.Contains(cleanPath, string(filepath.Separator)+"clips"+string(filepath.Separator)) {
+		return false
+	}
+	return true
+}
+
+func sanitizeClipName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	var out strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			out.WriteRune(r)
+			continue
+		}
+		if r == ' ' {
+			out.WriteRune('_')
+		}
+	}
+	res := strings.Trim(out.String(), "_-")
+	if len(res) > 80 {
+		res = res[:80]
+	}
+	return res
+}
+
+func listChannelMediaFiles(ch *Channel, includeClips bool) []string {
+	recordingDir := filepath.Clean(recordingDirFromPattern(ch.Config.Pattern))
+	completedDir := filepath.Clean(completedDirForChannel(ch))
+	dirs := []string{recordingDir, completedDir}
+	prefix := ch.Config.Username
+	type candidate struct {
+		path string
+		mod  time.Time
+	}
+	items := make([]candidate, 0)
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			base := filepath.Base(path)
+			if !strings.HasPrefix(base, prefix) {
+				return nil
+			}
+			ext := strings.ToLower(filepath.Ext(base))
+			if ext != ".mp4" && ext != ".mkv" && ext != ".ts" {
+				return nil
+			}
+			if !includeClips && strings.Contains(path, string(filepath.Separator)+"clips"+string(filepath.Separator)) {
+				return nil
+			}
+			info, infoErr := d.Info()
+			if infoErr != nil {
+				return nil
+			}
+			items = append(items, candidate{path: path, mod: info.ModTime()})
+			return nil
+		})
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].mod.After(items[j].mod)
+	})
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		out = append(out, it.path)
+	}
+	return out
 }
 
 func (ch *Channel) runFFmpegFinalizer(filename string) (string, error) {
