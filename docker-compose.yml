@@ -1,6 +1,6 @@
 services:
   goondvr:
-    image: ghcr.io/thehiddenuserdotpng/goondvr
+    build: .
     container_name: goondvr
     ports:
       - 8080:8080
