@@ -159,4 +159,9 @@ type Config struct {
 	SMBUploadPassword string
 	SMBUploadDomain   string
 	SMBUploadBaseDir  string
+
+	// Startup recovery settings.
+	RecoveryEnabled         bool
+	RecoveryUploadWindowHrs int
+	RecoveryMaxFFprobe      int
 }

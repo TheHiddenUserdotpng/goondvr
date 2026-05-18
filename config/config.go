@@ -34,5 +34,8 @@ func New(c *cli.Context) (*entity.Config, error) {
 		NightOpsStartHour:    0,
 		NightOpsEndHour:      6,
 		NightOpsRetrySeconds: 5,
+		RecoveryEnabled:      true,
+		RecoveryUploadWindowHrs: 7 * 24,
+		RecoveryMaxFFprobe:      24,
 	}, nil
 }

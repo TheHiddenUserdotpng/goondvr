@@ -20,6 +20,111 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func readImportPayload(c *gin.Context) ([]byte, error) {
+	file, err := c.FormFile("file")
+	if err == nil && file != nil {
+		f, openErr := file.Open()
+		if openErr != nil {
+			return nil, openErr
+		}
+		defer f.Close()
+		return io.ReadAll(io.LimitReader(f, 10<<20))
+	}
+	return io.ReadAll(io.LimitReader(c.Request.Body, 10<<20))
+}
+
+func ExportSettings(c *gin.Context) {
+	b, err := server.Manager.ExportSettingsJSON()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "message": err.Error()})
+		return
+	}
+	name := fmt.Sprintf("goondvr_settings_%s.json", time.Now().Format("20060102_150405"))
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	c.Data(http.StatusOK, "application/json; charset=utf-8", b)
+}
+
+func ExportChannels(c *gin.Context) {
+	b, err := server.Manager.ExportChannelsJSON()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "message": err.Error()})
+		return
+	}
+	name := fmt.Sprintf("goondvr_channels_%s.json", time.Now().Format("20060102_150405"))
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	c.Data(http.StatusOK, "application/json; charset=utf-8", b)
+}
+
+func ValidateImportSettings(c *gin.Context) {
+	payload, err := readImportPayload(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "cannot read settings file"})
+		return
+	}
+	if err := server.Manager.ValidateSettingsJSON(payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "Settings file is valid"})
+}
+
+func ValidateImportChannels(c *gin.Context) {
+	payload, err := readImportPayload(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "cannot read channels file"})
+		return
+	}
+	preview, err := server.Manager.PreviewChannelsImportJSON(payload)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":            true,
+		"message":       "Channels file is valid",
+		"count":         preview.IncomingCount,
+		"current_count": preview.CurrentCount,
+		"incoming_count": preview.IncomingCount,
+		"added":         preview.Added,
+		"removed":       preview.Removed,
+		"unchanged":     preview.Unchanged,
+	})
+}
+
+func ImportSettings(c *gin.Context) {
+	payload, err := readImportPayload(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "cannot read settings file"})
+		return
+	}
+	if len(strings.TrimSpace(string(payload))) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "settings payload is empty"})
+		return
+	}
+	if err := server.Manager.ImportSettingsJSON(payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "Settings imported"})
+}
+
+func ImportChannels(c *gin.Context) {
+	payload, err := readImportPayload(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "cannot read channels file"})
+		return
+	}
+	if len(strings.TrimSpace(string(payload))) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "channels payload is empty"})
+		return
+	}
+	if err := server.Manager.ImportChannelsJSON(payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "Channels imported and reloaded"})
+}
+
 type recordingItem struct {
 	Path       string `json:"path"`
 	Name       string `json:"name"`
@@ -35,29 +140,67 @@ type clipItem struct {
 
 // IndexData represents the data structure for the index page.
 type IndexData struct {
-	Config   *entity.Config
-	Channels []*entity.ChannelInfo
-	SMBLogs  []string
+	Config         *entity.Config
+	Channels       []*entity.ChannelInfo
+	SMBLogs        []string
+	RecoveryReport manager.RecoveryReport
 }
 
 // Index renders the index page with channel information.
 func Index(c *gin.Context) {
 	c.HTML(200, "index.html", &IndexData{
-		Config:   server.Config,
-		Channels: server.Manager.ChannelInfo(),
-		SMBLogs:  uploader.GetLogs(),
+		Config:         server.Config,
+		Channels:       server.Manager.ChannelInfo(),
+		SMBLogs:        uploader.GetLogs(),
+		RecoveryReport: manager.GetRecoveryReport(),
 	})
 }
 
 // CreateChannelRequest represents the request body for creating a channel.
 type CreateChannelRequest struct {
-	Username    string `form:"username" binding:"required"`
-	Site        string `form:"site"`
-	Framerate   int    `form:"framerate" binding:"required"`
-	Resolution  int    `form:"resolution" binding:"required"`
-	Pattern     string `form:"pattern" binding:"required"`
-	MaxDuration int    `form:"max_duration"`
-	MaxFilesize int    `form:"max_filesize"`
+	Username      string `form:"username"`
+	UsernamesBulk string `form:"usernames_bulk"`
+	Site          string `form:"site"`
+	Framerate     int    `form:"framerate"`
+	Resolution    int    `form:"resolution"`
+	Pattern       string `form:"pattern"`
+	MaxDuration   int    `form:"max_duration"`
+	MaxFilesize   int    `form:"max_filesize"`
+}
+
+func parseBulkUsernames(primary, bulk string) []string {
+	combined := strings.TrimSpace(primary)
+	if strings.TrimSpace(bulk) != "" {
+		if combined != "" {
+			combined += "\n"
+		}
+		combined += bulk
+	}
+
+	parts := strings.FieldsFunc(combined, func(r rune) bool {
+		switch r {
+		case ',', ';', '\n', '\r', '\t', ' ':
+			return true
+		default:
+			return false
+		}
+	})
+
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, p := range parts {
+		name := strings.TrimSpace(p)
+		if name == "" {
+			continue
+		}
+		key := strings.ToLower(name)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, name)
+	}
+	return out
 }
 
 // CreateChannel creates a new channel.
@@ -67,11 +210,28 @@ func CreateChannel(c *gin.Context) {
 		c.AbortWithError(http.StatusBadRequest, fmt.Errorf("bind: %w", err))
 		return
 	}
+	usernames := parseBulkUsernames(req.Username, req.UsernamesBulk)
+	if len(usernames) == 0 {
+		c.AbortWithError(http.StatusBadRequest, fmt.Errorf("username is required"))
+		return
+	}
+	if req.Framerate <= 0 {
+		c.AbortWithError(http.StatusBadRequest, fmt.Errorf("framerate is required"))
+		return
+	}
+	if req.Resolution <= 0 {
+		c.AbortWithError(http.StatusBadRequest, fmt.Errorf("resolution is required"))
+		return
+	}
+	if strings.TrimSpace(req.Pattern) == "" {
+		c.AbortWithError(http.StatusBadRequest, fmt.Errorf("pattern is required"))
+		return
+	}
 
 	siteName := entity.NormalizeSite(req.Site)
 
 	var errs []string
-	for _, username := range strings.Split(req.Username, ",") {
+	for _, username := range usernames {
 		if err := server.Manager.CreateChannel(&entity.ChannelConfig{
 			IsPaused:    false,
 			Username:    username,
@@ -497,6 +657,9 @@ type UpdateConfigRequest struct {
 	SMBUploadPassword      string `form:"smb_upload_password"`
 	SMBUploadDomain        string `form:"smb_upload_domain"`
 	SMBUploadBaseDir       string `form:"smb_upload_base_dir"`
+	RecoveryEnabled        bool   `form:"recovery_enabled"`
+	RecoveryUploadWindowHrs int   `form:"recovery_upload_window_hrs"`
+	RecoveryMaxFFprobe      int   `form:"recovery_max_ffprobe"`
 }
 
 // UpdateConfig updates the server configuration.
@@ -566,6 +729,15 @@ func UpdateConfig(c *gin.Context) {
 	server.Config.SMBUploadPassword = req.SMBUploadPassword
 	server.Config.SMBUploadDomain = strings.TrimSpace(req.SMBUploadDomain)
 	server.Config.SMBUploadBaseDir = strings.TrimSpace(req.SMBUploadBaseDir)
+	server.Config.RecoveryEnabled = req.RecoveryEnabled
+	server.Config.RecoveryUploadWindowHrs = req.RecoveryUploadWindowHrs
+	if server.Config.RecoveryUploadWindowHrs <= 0 {
+		server.Config.RecoveryUploadWindowHrs = 7 * 24
+	}
+	server.Config.RecoveryMaxFFprobe = req.RecoveryMaxFFprobe
+	if server.Config.RecoveryMaxFFprobe <= 0 {
+		server.Config.RecoveryMaxFFprobe = 24
+	}
 
 	if err := manager.SaveSettings(); err != nil {
 		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("save settings: %w", err))

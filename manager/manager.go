@@ -161,6 +161,14 @@ type settings struct {
 	SMBUploadPassword      string `json:"smb_upload_password,omitempty"`
 	SMBUploadDomain        string `json:"smb_upload_domain,omitempty"`
 	SMBUploadBaseDir       string `json:"smb_upload_base_dir,omitempty"`
+	RecoveryEnabled        *bool  `json:"recovery_enabled,omitempty"`
+	RecoveryUploadWindowHrs int   `json:"recovery_upload_window_hrs,omitempty"`
+	RecoveryMaxFFprobe      int   `json:"recovery_max_ffprobe,omitempty"`
+}
+
+func boolPtr(v bool) *bool {
+	b := v
+	return &b
 }
 
 // SaveSettings persists the current cookies and user-agent to disk.
@@ -201,6 +209,9 @@ func SaveSettings() error {
 		SMBUploadPassword:      server.Config.SMBUploadPassword,
 		SMBUploadDomain:        server.Config.SMBUploadDomain,
 		SMBUploadBaseDir:       server.Config.SMBUploadBaseDir,
+		RecoveryEnabled:        boolPtr(server.Config.RecoveryEnabled),
+		RecoveryUploadWindowHrs: server.Config.RecoveryUploadWindowHrs,
+		RecoveryMaxFFprobe:      server.Config.RecoveryMaxFFprobe,
 	}
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
@@ -292,6 +303,19 @@ func LoadSettings() error {
 	server.Config.SMBUploadPassword = s.SMBUploadPassword
 	server.Config.SMBUploadDomain = s.SMBUploadDomain
 	server.Config.SMBUploadBaseDir = s.SMBUploadBaseDir
+	if s.RecoveryEnabled == nil {
+		server.Config.RecoveryEnabled = true
+	} else {
+		server.Config.RecoveryEnabled = *s.RecoveryEnabled
+	}
+	server.Config.RecoveryUploadWindowHrs = s.RecoveryUploadWindowHrs
+	if server.Config.RecoveryUploadWindowHrs <= 0 {
+		server.Config.RecoveryUploadWindowHrs = 7 * 24
+	}
+	server.Config.RecoveryMaxFFprobe = s.RecoveryMaxFFprobe
+	if server.Config.RecoveryMaxFFprobe <= 0 {
+		server.Config.RecoveryMaxFFprobe = 24
+	}
 	if s.StripchatPDKey != "" {
 		server.Config.StripchatPDKey = s.StripchatPDKey
 	}
@@ -441,6 +465,213 @@ func (m *Manager) SaveConfig() error {
 	return nil
 }
 
+// ExportSettingsJSON persists then returns the current settings JSON payload.
+func (m *Manager) ExportSettingsJSON() ([]byte, error) {
+	if err := SaveSettings(); err != nil {
+		return nil, fmt.Errorf("save settings: %w", err)
+	}
+	b, err := os.ReadFile(settingsFile)
+	if err != nil {
+		return nil, fmt.Errorf("read settings: %w", err)
+	}
+	return b, nil
+}
+
+// ImportSettingsJSON validates and writes settings JSON, then applies it to runtime config.
+func (m *Manager) ImportSettingsJSON(data []byte) error {
+	var parsed settings
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return fmt.Errorf("invalid settings JSON: %w", err)
+	}
+
+	old, oldErr := os.ReadFile(settingsFile)
+	hadOld := oldErr == nil
+
+	pretty, err := json.MarshalIndent(parsed, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal imported settings: %w", err)
+	}
+	if err := os.MkdirAll("./conf", 0700); err != nil {
+		return fmt.Errorf("mkdir conf: %w", err)
+	}
+	if err := os.WriteFile(settingsFile, pretty, 0600); err != nil {
+		return fmt.Errorf("write settings: %w", err)
+	}
+
+	if err := LoadSettings(); err != nil {
+		if hadOld {
+			_ = os.WriteFile(settingsFile, old, 0600)
+			_ = LoadSettings()
+		}
+		return fmt.Errorf("apply imported settings: %w", err)
+	}
+
+	if err := SaveSettings(); err != nil {
+		return fmt.Errorf("normalize imported settings: %w", err)
+	}
+	return nil
+}
+
+// ValidateSettingsJSON performs a dry-run validation of settings JSON.
+func (m *Manager) ValidateSettingsJSON(data []byte) error {
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return fmt.Errorf("settings payload is empty")
+	}
+	var parsed settings
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return fmt.Errorf("invalid settings JSON: %w", err)
+	}
+	if _, err := json.Marshal(parsed); err != nil {
+		return fmt.Errorf("invalid settings payload: %w", err)
+	}
+	return nil
+}
+
+// ExportChannelsJSON persists then returns the current channels JSON payload.
+func (m *Manager) ExportChannelsJSON() ([]byte, error) {
+	if err := m.SaveConfig(); err != nil {
+		return nil, fmt.Errorf("save channels: %w", err)
+	}
+	b, err := os.ReadFile(channelsFile)
+	if os.IsNotExist(err) {
+		return []byte("[]\n"), nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read channels: %w", err)
+	}
+	return b, nil
+}
+
+// ImportChannelsJSON validates, writes, and hot-reloads channels from JSON.
+func (m *Manager) ImportChannelsJSON(data []byte) error {
+	config, err := validateImportedChannels(data)
+	if err != nil {
+		return err
+	}
+
+	old, oldErr := os.ReadFile(channelsFile)
+	hadOld := oldErr == nil
+
+	if err := saveChannelConfig(config); err != nil {
+		return fmt.Errorf("write imported channels: %w", err)
+	}
+
+	if err := m.reloadChannelsFromDisk(); err != nil {
+		if hadOld {
+			_ = os.WriteFile(channelsFile, old, 0600)
+		} else {
+			_ = os.Remove(channelsFile)
+		}
+		_ = m.reloadChannelsFromDisk()
+		return fmt.Errorf("reload channels after import: %w", err)
+	}
+
+	if err := m.SaveConfig(); err != nil {
+		return fmt.Errorf("persist imported channels: %w", err)
+	}
+	return nil
+}
+
+// ValidateChannelsJSON performs a dry-run validation of channels JSON.
+func (m *Manager) ValidateChannelsJSON(data []byte) error {
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return fmt.Errorf("channels payload is empty")
+	}
+	_, err := validateImportedChannels(data)
+	return err
+}
+
+// PreviewChannelsImportJSON validates an import payload and returns a dry-run diff
+// versus the current runtime channel list.
+func (m *Manager) PreviewChannelsImportJSON(data []byte) (server.ChannelsImportPreview, error) {
+	config, err := validateImportedChannels(data)
+	if err != nil {
+		return server.ChannelsImportPreview{}, err
+	}
+
+	incomingIDs := make(map[string]struct{}, len(config))
+	for _, conf := range config {
+		incomingIDs[entity.ChannelID(conf.Site, conf.Username)] = struct{}{}
+	}
+
+	currentIDs := make(map[string]struct{})
+	m.Channels.Range(func(_, value any) bool {
+		ch := value.(*channel.Channel)
+		currentIDs[entity.ChannelID(ch.Config.Site, ch.Config.Username)] = struct{}{}
+		return true
+	})
+
+	preview := server.ChannelsImportPreview{
+		CurrentCount:  len(currentIDs),
+		IncomingCount: len(incomingIDs),
+		Added:         make([]string, 0),
+		Removed:       make([]string, 0),
+		Unchanged:     make([]string, 0),
+	}
+
+	for id := range incomingIDs {
+		if _, ok := currentIDs[id]; ok {
+			preview.Unchanged = append(preview.Unchanged, id)
+			continue
+		}
+		preview.Added = append(preview.Added, id)
+	}
+	for id := range currentIDs {
+		if _, ok := incomingIDs[id]; ok {
+			continue
+		}
+		preview.Removed = append(preview.Removed, id)
+	}
+
+	sort.Strings(preview.Added)
+	sort.Strings(preview.Removed)
+	sort.Strings(preview.Unchanged)
+
+	return preview, nil
+}
+
+func validateImportedChannels(data []byte) ([]*entity.ChannelConfig, error) {
+	var config []*entity.ChannelConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("invalid channels JSON: %w", err)
+	}
+
+	migrated, err := migrateLegacyPatternConflicts(config)
+	if err != nil {
+		return nil, fmt.Errorf("validate channels: %w", err)
+	}
+	if migrated {
+		// keep migrated in-memory config; caller persists canonical JSON
+	}
+
+	seen := make(map[string]struct{}, len(config))
+	for i, conf := range config {
+		conf.Sanitize()
+		if conf.Username == "" {
+			return nil, fmt.Errorf("channel at index %d has empty username", i)
+		}
+		channelID := entity.ChannelID(conf.Site, conf.Username)
+		if _, ok := seen[channelID]; ok {
+			return nil, fmt.Errorf("duplicate channel %s (%s)", conf.Username, conf.Site)
+		}
+		seen[channelID] = struct{}{}
+		if err := detectPatternConflict(conf, config[:i]); err != nil {
+			return nil, err
+		}
+	}
+
+	return config, nil
+}
+
+func (m *Manager) reloadChannelsFromDisk() error {
+	m.Channels.Range(func(key, value any) bool {
+		value.(*channel.Channel).Stop()
+		m.Channels.Delete(key)
+		return true
+	})
+	return m.LoadConfig()
+}
+
 func saveChannelConfig(config []*entity.ChannelConfig) error {
 	b, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
@@ -507,6 +738,7 @@ func (m *Manager) LoadConfig() error {
 		}
 		go ch.Resume(i)
 	}
+	m.runStartupRecovery(config)
 	return nil
 }
 

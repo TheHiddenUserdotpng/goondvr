@@ -30,6 +30,22 @@ type IManager interface {
 	ReportCFBlock(username string)
 	ResetCFBlock(username string)
 	GetStats() StatsResponse
+	ExportSettingsJSON() ([]byte, error)
+	ImportSettingsJSON(data []byte) error
+	ExportChannelsJSON() ([]byte, error)
+	ImportChannelsJSON(data []byte) error
+	ValidateSettingsJSON(data []byte) error
+	ValidateChannelsJSON(data []byte) error
+	PreviewChannelsImportJSON(data []byte) (ChannelsImportPreview, error)
+}
+
+// ChannelsImportPreview summarizes the diff between runtime channels and an import file.
+type ChannelsImportPreview struct {
+	CurrentCount  int      `json:"current_count"`
+	IncomingCount int      `json:"incoming_count"`
+	Added         []string `json:"added"`
+	Removed       []string `json:"removed"`
+	Unchanged     []string `json:"unchanged"`
 }
 
 // StatsResponse holds system stats returned by the /api/stats endpoint.

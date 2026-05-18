@@ -73,6 +73,124 @@
 
             /* View toggle active state */
             .view-toggle-btn.is-active { background: var(--ts-gray-800) !important; color: var(--ts-white) !important; }
+
+            body {
+                background:
+                    radial-gradient(1200px 500px at 100% -10%, rgba(33, 150, 243, 0.10), transparent 60%),
+                    radial-gradient(900px 420px at -10% 0%, rgba(0, 200, 180, 0.08), transparent 60%),
+                    linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+            }
+
+            .top-toolbar {
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 12px;
+                padding: 0.85rem 0.95rem;
+                background: rgba(17, 23, 32, 0.42);
+                backdrop-filter: blur(4px);
+                margin-bottom: 0.8rem;
+            }
+
+            .status-panel {
+                border: 1px solid rgba(255,255,255,0.08);
+                box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+            }
+
+            .settings-tabs {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.45rem;
+                margin-top: 0.25rem;
+            }
+
+            .settings-tab-btn {
+                border: 1px solid rgba(255,255,255,0.10);
+                background: rgba(255,255,255,0.03);
+                color: rgba(255,255,255,0.78);
+                border-radius: 999px;
+                padding: 0.35rem 0.75rem;
+                font-size: 12px;
+                cursor: pointer;
+            }
+
+            .settings-tab-btn.is-active {
+                background: rgba(38, 166, 154, 0.18);
+                border-color: rgba(38, 166, 154, 0.5);
+                color: #d8fffb;
+            }
+
+            .settings-pane {
+                display: none;
+            }
+
+            .settings-pane.is-active {
+                display: block;
+            }
+
+            .settings-pane > .ts-header.is-small {
+                margin-bottom: 0.8rem;
+                letter-spacing: 0.03em;
+            }
+
+            .settings-search-wrap {
+                margin-top: 0.6rem;
+            }
+
+            .rec-badge {
+                display: inline-block;
+                margin-left: 0.45rem;
+                padding: 0.1rem 0.45rem;
+                border-radius: 999px;
+                font-size: 11px;
+                color: rgba(205, 244, 255, 0.95);
+                border: 1px solid rgba(65, 184, 213, 0.55);
+                background: rgba(28, 126, 159, 0.2);
+                vertical-align: middle;
+            }
+
+            .advanced-group {
+                margin-top: 1rem;
+                border: 1px dashed rgba(255,255,255,0.2);
+                border-radius: 10px;
+                padding: 0.55rem 0.7rem;
+                background: rgba(255,255,255,0.02);
+            }
+
+            .advanced-group > summary {
+                cursor: pointer;
+                font-weight: 600;
+                color: rgba(255,255,255,0.9);
+                list-style: none;
+                margin-bottom: 0.2rem;
+            }
+
+            .advanced-group > summary::-webkit-details-marker {
+                display: none;
+            }
+
+            .advanced-group > summary::before {
+                content: '▸';
+                display: inline-block;
+                margin-right: 0.4rem;
+                transition: transform 0.15s ease;
+            }
+
+            .advanced-group[open] > summary::before {
+                transform: rotate(90deg);
+            }
+
+            .settings-tab-btn.is-muted {
+                opacity: 0.35;
+            }
+
+            .is-search-hidden {
+                display: none !important;
+            }
+
+            .import-preview-list {
+                white-space: pre-line;
+                max-height: 120px;
+                overflow: auto;
+            }
         </style>
     </head>
 
@@ -80,7 +198,7 @@
         <!-- Main Section -->
         <div class="ts-container has-vertically-padded-big" style="--width: 990px">
             <!-- Header -->
-            <div class="ts-grid is-bottom-aligned">
+            <div class="ts-grid is-bottom-aligned top-toolbar">
                 <div class="column is-fluid">
                     <div class="ts-header is-huge is-uppercased is-heavy has-leading-small">GoondVR</div>
                     <div class="ts-meta">
@@ -139,7 +257,7 @@
             </div>
             <!-- / Stats Bar -->
 
-            <div class="ts-box has-top-spaced-large" sse-connect="/updates?stream=updates">
+            <div class="ts-box has-top-spaced-large status-panel" sse-connect="/updates?stream=updates">
                 <div class="ts-content is-padded" style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem;">
                     <div class="ts-header is-small">SMB Upload Status</div>
                     <label class="ts-switch is-small" style="display:flex">
@@ -152,6 +270,73 @@
                     <div class="ts-input">
                         <textarea id="smb-log-textarea" rows="7" readonly sse-swap="smb-log" style="scrollbar-width: thin">{{ range .SMBLogs }}{{ . }}&NewLine;{{ end }}</textarea>
                     </div>
+                </div>
+            </div>
+
+            <div class="ts-box has-top-spaced-large status-panel">
+                <div class="ts-content is-padded" style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem;">
+                    <div class="ts-header is-small">Recovery Report</div>
+                    <div class="ts-text is-description">
+                        {{ if .RecoveryReport.LastRunAt.IsZero }}Never run{{ else }}Last run: {{ .RecoveryReport.LastRunAt.Format "2006-01-02 15:04:05" }}{{ end }}
+                    </div>
+                </div>
+                <div class="ts-divider"></div>
+                <div class="ts-content is-padded">
+                    {{ if not .RecoveryReport.Enabled }}
+                    <div class="ts-text is-description">Recovery mode is disabled in settings.</div>
+                    {{ else }}
+                    <div class="ts-grid is-relaxed is-4-columns">
+                        <div class="column">
+                            <div class="ts-text is-description">Scanned</div>
+                            <div class="ts-header is-small">{{ .RecoveryReport.Scanned }}</div>
+                        </div>
+                        <div class="column">
+                            <div class="ts-text is-description">Queued</div>
+                            <div class="ts-header is-small">{{ .RecoveryReport.Queued }}</div>
+                        </div>
+                        <div class="column">
+                            <div class="ts-text is-description">Duplicates</div>
+                            <div class="ts-header is-small">{{ .RecoveryReport.DuplicateGroups }}</div>
+                        </div>
+                        <div class="column">
+                            <div class="ts-text is-description">Corrupt</div>
+                            <div class="ts-header is-small">{{ .RecoveryReport.CorruptFiles }}</div>
+                        </div>
+                    </div>
+
+                    <div class="ts-grid is-relaxed is-2-columns has-top-spaced">
+                        <div class="column">
+                            <div class="ts-text is-bold">Duplicate groups</div>
+                            {{ if .RecoveryReport.Duplicates }}
+                            <div class="ts-wrap is-vertical has-top-spaced-small" style="max-height: 190px; overflow:auto;">
+                                {{ range .RecoveryReport.Duplicates }}
+                                <div class="ts-box is-small">
+                                    <div class="ts-text is-description">hash {{ .HashPrefix }} • {{ .Size }} bytes</div>
+                                    <div class="ts-text is-description">{{ range $i, $p := .Paths }}{{ if $i }}<br/>{{ end }}{{ $p }}{{ end }}</div>
+                                </div>
+                                {{ end }}
+                            </div>
+                            {{ else }}
+                            <div class="ts-text is-description has-top-spaced-small">No duplicate groups detected.</div>
+                            {{ end }}
+                        </div>
+                        <div class="column">
+                            <div class="ts-text is-bold">Potentially corrupt files</div>
+                            {{ if .RecoveryReport.Corrupt }}
+                            <div class="ts-wrap is-vertical has-top-spaced-small" style="max-height: 190px; overflow:auto;">
+                                {{ range .RecoveryReport.Corrupt }}
+                                <div class="ts-box is-small">
+                                    <div class="ts-text is-description">{{ .Path }}</div>
+                                    <div class="ts-text is-description">{{ .Reason }}</div>
+                                </div>
+                                {{ end }}
+                            </div>
+                            {{ else }}
+                            <div class="ts-text is-description has-top-spaced-small">No corruption findings detected.</div>
+                            {{ end }}
+                        </div>
+                    </div>
+                    {{ end }}
                 </div>
             </div>
 
@@ -213,16 +398,30 @@
         <!-- / Main Section -->
 
         <!-- Settings Dialog -->
-        <dialog id="settings-dialog" class="ts-modal" style="--width: 680px">
+        <dialog id="settings-dialog" class="ts-modal" style="--width: 860px">
             <div class="content">
                 <form action="/update_config" method="POST">
                     <div class="ts-content is-horizontally-padded is-secondary">
                         <div class="ts-grid">
                             <div class="column is-fluid">
                                 <div class="ts-header">Settings</div>
+                                <div class="ts-text is-description">Tune the recorder without hunting through one long list.</div>
                             </div>
                             <div class="column">
                                 <button type="reset" class="ts-close is-rounded is-large is-secondary" data-dialog="settings-dialog"></button>
+                            </div>
+                        </div>
+                        <div class="settings-tabs" id="settings-tabs">
+                            <button type="button" class="settings-tab-btn" data-settings-tab="access">Access</button>
+                            <button type="button" class="settings-tab-btn" data-settings-tab="recording">Recording</button>
+                            <button type="button" class="settings-tab-btn" data-settings-tab="notify">Notifications</button>
+                            <button type="button" class="settings-tab-btn" data-settings-tab="ops">Operations</button>
+                            <button type="button" class="settings-tab-btn" data-settings-tab="smb">SMB Upload</button>
+                        </div>
+                        <div class="settings-search-wrap">
+                            <div class="ts-input is-start-icon">
+                                <span class="ts-icon is-magnifying-glass-icon"></span>
+                                <input id="settings-search" type="text" placeholder="Search settings... (e.g. discord, ffmpeg, recovery)" autocomplete="off" />
                             </div>
                         </div>
                     </div>
@@ -230,6 +429,8 @@
                     <div class="ts-divider"></div>
 
                     <div class="ts-content is-vertically-padded">
+                        <section class="settings-pane" data-settings-pane="access">
+                        <div class="ts-header is-small">Access & Request Identity</div>
                         <!-- Cookies -->
                         <div class="ts-control is-wide">
                             <div class="label">Cookies</div>
@@ -253,6 +454,10 @@
                             </div>
                         </div>
                         <!-- / User Agent -->
+                        </section>
+
+                        <section class="settings-pane" data-settings-pane="recording">
+                        <div class="ts-header is-small">Recording & Finalization</div>
 
                         <!-- Completed Directory -->
                         <div class="ts-control is-wide has-top-spaced-large">
@@ -273,7 +478,7 @@
                                 <div class="ts-content is-padded is-secondary">
                                     <div class="ts-grid is-relaxed is-2-columns">
                                         <div class="column">
-                                            <div class="ts-text is-bold">Mode</div>
+                                            <div class="ts-text is-bold">Mode <span class="rec-badge">Recommended: none</span></div>
                                             <div class="ts-select has-top-spaced-small">
                                                 <select name="finalize_mode">
                                                     <option value="none" {{ if eq .Config.FinalizeMode "none" }}selected{{ end }}>None</option>
@@ -283,7 +488,7 @@
                                             </div>
                                         </div>
                                         <div class="column">
-                                            <div class="ts-text is-bold">Container</div>
+                                            <div class="ts-text is-bold">Container <span class="rec-badge">Recommended: mp4</span></div>
                                             <div class="ts-select has-top-spaced-small">
                                                 <select name="ffmpeg_container">
                                                     <option value="mp4" {{ if eq .Config.FFmpegContainer "mp4" }}selected{{ end }}>MP4</option>
@@ -291,45 +496,51 @@
                                                 </select>
                                             </div>
                                         </div>
-                                        <div class="column">
-                                            <div class="ts-text is-bold">Encoder</div>
-                                            <div class="ts-input has-top-spaced-small">
-                                                <input type="text" name="ffmpeg_encoder" value="{{ .Config.FFmpegEncoder }}" placeholder="libx264" list="ffmpeg-encoder-suggestions" />
-                                                <datalist id="ffmpeg-encoder-suggestions">
-                                                    <option value="libx264"></option>
-                                                    <option value="libx265"></option>
-                                                    <option value="h264_nvenc"></option>
-                                                    <option value="hevc_nvenc"></option>
-                                                    <option value="h264_qsv"></option>
-                                                    <option value="h264_vaapi"></option>
-                                                </datalist>
-                                            </div>
-                                            <div class="ts-text is-description has-top-spaced-small">Common values: `libx264`, `libx265`, `h264_nvenc`, `hevc_nvenc`, `h264_qsv`, `h264_vaapi`.</div>
-                                        </div>
-                                        <div class="column">
-                                            <div class="ts-text is-bold">Quality</div>
-                                            <div class="ts-input is-end-labeled has-top-spaced-small">
-                                                <input type="number" name="ffmpeg_quality" value="{{ .Config.FFmpegQuality }}" min="1" />
-                                                <span class="label">CRF/CQ</span>
-                                            </div>
-                                        </div>
-                                        <div class="column">
-                                            <div class="ts-text is-bold">Preset</div>
-                                            <div class="ts-input has-top-spaced-small">
-                                                <input type="text" name="ffmpeg_preset" value="{{ .Config.FFmpegPreset }}" placeholder="medium" />
-                                            </div>
-                                        </div>
                                     </div>
-                                    <div class="ts-text is-description has-top-spaced">`remux` and `transcode` require `ffmpeg` to be installed. Hardware encoders like `h264_nvenc`, `hevc_nvenc`, `h264_qsv`, and `h264_vaapi` need compatible GPU/device access; if the encoder is unavailable, finalization will fail and the original recording will be kept.</div>
+                                    <details class="advanced-group">
+                                        <summary>Advanced FFmpeg tuning</summary>
+                                        <div class="ts-grid is-relaxed is-2-columns has-top-spaced-small">
+                                            <div class="column">
+                                                <div class="ts-text is-bold">Encoder <span class="rec-badge">Recommended: libx264</span></div>
+                                                <div class="ts-input has-top-spaced-small">
+                                                    <input type="text" name="ffmpeg_encoder" value="{{ .Config.FFmpegEncoder }}" placeholder="libx264" list="ffmpeg-encoder-suggestions" />
+                                                    <datalist id="ffmpeg-encoder-suggestions">
+                                                        <option value="libx264"></option>
+                                                        <option value="libx265"></option>
+                                                        <option value="h264_nvenc"></option>
+                                                        <option value="hevc_nvenc"></option>
+                                                        <option value="h264_qsv"></option>
+                                                        <option value="h264_vaapi"></option>
+                                                    </datalist>
+                                                </div>
+                                            </div>
+                                            <div class="column">
+                                                <div class="ts-text is-bold">Quality <span class="rec-badge">Recommended: 23</span></div>
+                                                <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                    <input type="number" name="ffmpeg_quality" value="{{ .Config.FFmpegQuality }}" min="1" />
+                                                    <span class="label">CRF/CQ</span>
+                                                </div>
+                                            </div>
+                                            <div class="column">
+                                                <div class="ts-text is-bold">Preset <span class="rec-badge">Recommended: medium</span></div>
+                                                <div class="ts-input has-top-spaced-small">
+                                                    <input type="text" name="ffmpeg_preset" value="{{ .Config.FFmpegPreset }}" placeholder="medium" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="ts-text is-description has-top-spaced-small">Common values: libx264, libx265, h264_nvenc, hevc_nvenc, h264_qsv, h264_vaapi.</div>
+                                        <div class="ts-text is-description has-top-spaced-small">remux/transcode require ffmpeg and compatible encoder support. If unavailable, finalization fails and original recording is kept.</div>
+                                    </details>
                                 </div>
                             </div>
                         </div>
                         <!-- / FFmpeg Finalization -->
+                        </section>
+
+                        <section class="settings-pane" data-settings-pane="notify">
+                        <div class="ts-header is-small">Notifications</div>
 
                         <div class="ts-divider has-vertically-spaced-large"></div>
-
-                        <!-- Notifications header -->
-                        <div class="ts-header is-small has-bottom-spaced">Notifications</div>
 
                         <!-- ntfy -->
                         <div class="ts-control is-wide">
@@ -348,14 +559,6 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="ts-control is-wide has-top-spaced">
-                            <div class="label">ntfy Token</div>
-                            <div class="content">
-                                <div class="ts-input">
-                                    <input type="password" name="ntfy_token" value="{{ .Config.NtfyToken }}" placeholder="Bearer token" />
-                                </div>
-                            </div>
-                        </div>
                         <!-- / ntfy -->
 
                         <!-- Discord -->
@@ -365,24 +568,6 @@
                                 <div class="ts-input">
                                     <input type="url" name="discord_webhook_url" value="{{ .Config.DiscordWebhookURL }}" placeholder="https://discord.com/api/webhooks/..." />
                                 </div>
-                            </div>
-                        </div>
-                        <div class="ts-control is-wide has-top-spaced-large">
-                            <div class="label">Discord Bot Token</div>
-                            <div class="content">
-                                <div class="ts-input">
-                                    <input type="password" name="discord_bot_token" value="{{ .Config.DiscordBotToken }}" placeholder="Bot token" autocomplete="off" />
-                                </div>
-                                <div class="ts-text is-description has-top-spaced-small">Optional: used for a persistent status embed message.</div>
-                            </div>
-                        </div>
-                        <div class="ts-control is-wide has-top-spaced-large">
-                            <div class="label">Discord Status Channel ID</div>
-                            <div class="content">
-                                <div class="ts-input">
-                                    <input type="text" name="discord_status_channel_id" value="{{ .Config.DiscordStatusChannelID }}" placeholder="123456789012345678" />
-                                </div>
-                                <div class="ts-text is-description has-top-spaced-small">When set with bot token, goondvr updates one embed with current live recordings.</div>
                             </div>
                         </div>
 
@@ -395,15 +580,108 @@
                                 <div class="ts-text is-description has-top-spaced-small">Sends notifier events to n8n as JSON payloads.</div>
                             </div>
                         </div>
-                        <div class="ts-control is-wide has-top-spaced">
-                            <div class="label">n8n Token (optional)</div>
+                        <details class="advanced-group has-top-spaced-large">
+                            <summary>Advanced / sensitive credentials</summary>
+                            <div class="ts-control is-wide has-top-spaced-small">
+                                <div class="label">ntfy Token</div>
+                                <div class="content">
+                                    <div class="ts-input">
+                                        <input type="password" name="ntfy_token" value="{{ .Config.NtfyToken }}" placeholder="Bearer token" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="ts-control is-wide has-top-spaced">
+                                <div class="label">Discord Bot Token</div>
+                                <div class="content">
+                                    <div class="ts-input">
+                                        <input type="password" name="discord_bot_token" value="{{ .Config.DiscordBotToken }}" placeholder="Bot token" autocomplete="off" />
+                                    </div>
+                                    <div class="ts-text is-description has-top-spaced-small">Optional: used for a persistent status embed message.</div>
+                                </div>
+                            </div>
+                            <div class="ts-control is-wide has-top-spaced">
+                                <div class="label">Discord Status Channel ID</div>
+                                <div class="content">
+                                    <div class="ts-input">
+                                        <input type="text" name="discord_status_channel_id" value="{{ .Config.DiscordStatusChannelID }}" placeholder="123456789012345678" />
+                                    </div>
+                                    <div class="ts-text is-description has-top-spaced-small">When set with bot token, goondvr updates one embed with current live recordings.</div>
+                                </div>
+                            </div>
+                            <div class="ts-control is-wide has-top-spaced">
+                                <div class="label">n8n Token (optional)</div>
+                                <div class="content">
+                                    <div class="ts-input">
+                                        <input type="password" name="n8n_token" value="{{ .Config.N8NToken }}" placeholder="Bearer token" autocomplete="off" />
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
+                        <!-- / Discord -->
+
+                        <!-- Thresholds -->
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Thresholds &amp; Cooldowns</div>
                             <div class="content">
-                                <div class="ts-input">
-                                    <input type="password" name="n8n_token" value="{{ .Config.N8NToken }}" placeholder="Bearer token" autocomplete="off" />
+                                <div class="ts-content is-padded is-secondary">
+                                    <div class="ts-grid is-relaxed is-2-columns">
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Disk Warning % <span class="rec-badge">Default: 80</span></div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="disk_warning_percent" value="{{ .Config.DiskWarningPercent }}" min="1" max="99" />
+                                                <span class="label">%</span>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Disk Critical % <span class="rec-badge">Default: 90</span></div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="disk_critical_percent" value="{{ .Config.DiskCriticalPercent }}" min="1" max="100" />
+                                                <span class="label">%</span>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">CF Channel Alerts <span class="rec-badge">Default: 5</span></div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="cf_channel_threshold" value="{{ .Config.CFChannelThreshold }}" min="1" />
+                                                <span class="label">blocks</span>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">CF Global Alerts <span class="rec-badge">Default: 3</span></div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="cf_global_threshold" value="{{ .Config.CFGlobalThreshold }}" min="1" />
+                                                <span class="label">channels</span>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Alert Cooldown <span class="rec-badge">Default: 4h</span></div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="notify_cooldown_hours" value="{{ .Config.NotifyCooldownHours }}" min="0" />
+                                                <span class="label">hrs</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="ts-text is-description has-top-spaced">Disk checks run every 5 min. CF thresholds trigger alerts after consecutive blocks per channel or simultaneous blocks across channels.</div>
                                 </div>
                             </div>
                         </div>
-                        <!-- / Discord -->
+                        <!-- / Thresholds -->
+
+                        <!-- Stream Online Toggle -->
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Stream Alerts</div>
+                            <div class="content is-padded">
+                                <label class="ts-switch">
+                                    <input type="checkbox" name="notify_stream_online" value="true" {{ if .Config.NotifyStreamOnline }}checked{{ end }} />
+                                    Notify when a channel goes live
+                                </label>
+                            </div>
+                        </div>
+                        <!-- / Stream Online Toggle -->
+                        </section>
+
+                        <section class="settings-pane" data-settings-pane="ops">
+                        <div class="ts-header is-small">Night Ops & Recovery</div>
 
                         <div class="ts-divider has-vertically-spaced-large"></div>
 
@@ -431,7 +709,7 @@
                                 </div>
                             </div>
                             <div class="column">
-                                <div class="ts-text is-bold">Transient Retry (sec)</div>
+                                <div class="ts-text is-bold">Transient Retry (sec) <span class="rec-badge">Default: 5</span></div>
                                 <div class="ts-input has-top-spaced-small">
                                     <input type="number" min="1" max="60" name="night_ops_retry_seconds" value="{{ .Config.NightOpsRetrySeconds }}" />
                                 </div>
@@ -439,68 +717,38 @@
                         </div>
                         <div class="ts-text is-description has-top-spaced-small">If start > end, window crosses midnight (e.g. 22 -> 6).</div>
 
-                        <!-- Thresholds -->
-                        <div class="ts-control is-wide has-top-spaced-large">
-                            <div class="label">Thresholds &amp; Cooldowns</div>
-                            <div class="content">
-                                <div class="ts-content is-padded is-secondary">
-                                    <div class="ts-grid is-relaxed is-2-columns">
-                                        <div class="column">
-                                            <div class="ts-text is-bold">Disk Warning %</div>
-                                            <div class="ts-input is-end-labeled has-top-spaced-small">
-                                                <input type="number" name="disk_warning_percent" value="{{ .Config.DiskWarningPercent }}" min="1" max="99" />
-                                                <span class="label">%</span>
-                                            </div>
-                                        </div>
-                                        <div class="column">
-                                            <div class="ts-text is-bold">Disk Critical %</div>
-                                            <div class="ts-input is-end-labeled has-top-spaced-small">
-                                                <input type="number" name="disk_critical_percent" value="{{ .Config.DiskCriticalPercent }}" min="1" max="100" />
-                                                <span class="label">%</span>
-                                            </div>
-                                        </div>
-                                        <div class="column">
-                                            <div class="ts-text is-bold">CF Channel Alerts</div>
-                                            <div class="ts-input is-end-labeled has-top-spaced-small">
-                                                <input type="number" name="cf_channel_threshold" value="{{ .Config.CFChannelThreshold }}" min="1" />
-                                                <span class="label">blocks</span>
-                                            </div>
-                                        </div>
-                                        <div class="column">
-                                            <div class="ts-text is-bold">CF Global Alerts</div>
-                                            <div class="ts-input is-end-labeled has-top-spaced-small">
-                                                <input type="number" name="cf_global_threshold" value="{{ .Config.CFGlobalThreshold }}" min="1" />
-                                                <span class="label">channels</span>
-                                            </div>
-                                        </div>
-                                        <div class="column">
-                                            <div class="ts-text is-bold">Alert Cooldown</div>
-                                            <div class="ts-input is-end-labeled has-top-spaced-small">
-                                                <input type="number" name="notify_cooldown_hours" value="{{ .Config.NotifyCooldownHours }}" min="0" />
-                                                <span class="label">hrs</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="ts-text is-description has-top-spaced">Disk checks run every 5 min. CF thresholds trigger alerts after consecutive blocks per channel or simultaneous blocks across channels.</div>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- / Thresholds -->
+                        <div class="ts-divider has-vertically-spaced-large"></div>
 
-                        <!-- Stream Online Toggle -->
-                        <div class="ts-control is-wide has-top-spaced-large">
-                            <div class="label">Stream Alerts</div>
+                        <div class="ts-header is-small has-bottom-spaced">Startup Recovery</div>
+                        <div class="ts-control is-wide">
+                            <div class="label">Enable Recovery</div>
                             <div class="content is-padded">
                                 <label class="ts-switch">
-                                    <input type="checkbox" name="notify_stream_online" value="true" {{ if .Config.NotifyStreamOnline }}checked{{ end }} />
-                                    Notify when a channel goes live
+                                    <input type="checkbox" name="recovery_enabled" value="true" {{ if .Config.RecoveryEnabled }}checked{{ end }} />
+                                    Requeue recent completed files and run duplicate/corruption checks on startup
                                 </label>
                             </div>
                         </div>
-                        <!-- / Stream Online Toggle -->
+                        <div class="ts-grid is-relaxed is-2-columns has-top-spaced-large">
+                            <div class="column">
+                                <div class="ts-text is-bold">Upload Recovery Window <span class="rec-badge">Default: 168h</span></div>
+                                <div class="ts-input is-end-labeled has-top-spaced-small">
+                                    <input type="number" min="1" name="recovery_upload_window_hrs" value="{{ .Config.RecoveryUploadWindowHrs }}" />
+                                    <span class="label">hours</span>
+                                </div>
+                            </div>
+                            <div class="column">
+                                <div class="ts-text is-bold">Max ffprobe checks <span class="rec-badge">Default: 24</span></div>
+                                <div class="ts-input is-end-labeled has-top-spaced-small">
+                                    <input type="number" min="1" name="recovery_max_ffprobe" value="{{ .Config.RecoveryMaxFFprobe }}" />
+                                    <span class="label">files</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ts-text is-description has-top-spaced-small">Controls startup workload: larger values scan deeper but take longer after restart.</div>
+                        </section>
 
-                        <div class="ts-divider has-vertically-spaced-large"></div>
-
+                        <section class="settings-pane" data-settings-pane="smb">
                         <div class="ts-header is-small has-bottom-spaced">TrueNAS SMB Upload</div>
                         <div class="ts-control is-wide">
                             <div class="label">Enable SMB Upload</div>
@@ -540,19 +788,24 @@
                                     <input type="password" name="smb_upload_password" value="{{ .Config.SMBUploadPassword }}" placeholder="password" autocomplete="off" />
                                 </div>
                             </div>
-                            <div class="column">
-                                <div class="ts-text is-bold">Domain (optional)</div>
-                                <div class="ts-input has-top-spaced-small">
-                                    <input type="text" name="smb_upload_domain" value="{{ .Config.SMBUploadDomain }}" placeholder="WORKGROUP" />
-                                </div>
-                            </div>
-                            <div class="column">
-                                <div class="ts-text is-bold">Remote Base Dir (optional)</div>
-                                <div class="ts-input has-top-spaced-small">
-                                    <input type="text" name="smb_upload_base_dir" value="{{ .Config.SMBUploadBaseDir }}" placeholder="goondvr" />
-                                </div>
-                            </div>
                         </div>
+                        <details class="advanced-group has-top-spaced">
+                            <summary>Advanced SMB routing</summary>
+                            <div class="ts-grid is-relaxed is-2-columns has-top-spaced-small">
+                                <div class="column">
+                                    <div class="ts-text is-bold">Domain (optional)</div>
+                                    <div class="ts-input has-top-spaced-small">
+                                        <input type="text" name="smb_upload_domain" value="{{ .Config.SMBUploadDomain }}" placeholder="WORKGROUP" />
+                                    </div>
+                                </div>
+                                <div class="column">
+                                    <div class="ts-text is-bold">Remote Base Dir (optional)</div>
+                                    <div class="ts-input has-top-spaced-small">
+                                        <input type="text" name="smb_upload_base_dir" value="{{ .Config.SMBUploadBaseDir }}" placeholder="goondvr" />
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
                         <div class="ts-text is-description has-top-spaced-small">Uploads happen asynchronously when files are completed or clips/highlights are created.</div>
                         <div class="ts-grid is-relaxed is-2-columns has-top-spaced-large">
                             <div class="column">
@@ -564,6 +817,37 @@
                                 <div id="smb-test-result" class="ts-text is-description"></div>
                             </div>
                         </div>
+                        </section>
+
+                        <div class="ts-divider has-vertically-spaced-large"></div>
+
+                        <div class="ts-header is-small has-bottom-spaced">Backup & Restore</div>
+                        <div class="ts-grid is-relaxed is-2-columns">
+                            <div class="column">
+                                <button id="export-settings-btn" type="button" class="ts-button is-outlined is-start-icon is-fluid">
+                                    <span class="ts-icon is-download-icon"></span>Export Settings JSON
+                                </button>
+                            </div>
+                            <div class="column">
+                                <button id="import-settings-btn" type="button" class="ts-button is-outlined is-start-icon is-fluid">
+                                    <span class="ts-icon is-upload-icon"></span>Import Settings JSON
+                                </button>
+                                <input id="import-settings-file" type="file" accept="application/json,.json" style="display:none" />
+                            </div>
+                            <div class="column">
+                                <button id="export-channels-btn" type="button" class="ts-button is-outlined is-start-icon is-fluid">
+                                    <span class="ts-icon is-download-icon"></span>Export Channels JSON
+                                </button>
+                            </div>
+                            <div class="column">
+                                <button id="import-channels-btn" type="button" class="ts-button is-outlined is-start-icon is-fluid">
+                                    <span class="ts-icon is-upload-icon"></span>Import Channels JSON
+                                </button>
+                                <input id="import-channels-file" type="file" accept="application/json,.json" style="display:none" />
+                            </div>
+                        </div>
+                        <div id="settings-transfer-status" class="ts-text is-description has-top-spaced-small"></div>
+                        <div class="ts-text is-description has-top-spaced-small">Import of channels hot-reloads runtime channels. Existing runtime state is replaced by the imported list.</div>
                     </div>
 
                     <div class="ts-divider"></div>
@@ -588,6 +872,50 @@
             </div>
         </dialog>
         <!-- / Settings Dialog -->
+
+        <!-- Import Channels Confirmation Dialog -->
+        <dialog id="confirm-import-channels-dialog" class="ts-modal" style="--width: 560px">
+            <div class="content">
+                <div class="ts-content is-horizontally-padded is-secondary">
+                    <div class="ts-grid">
+                        <div class="column is-fluid">
+                            <div class="ts-header is-small">Replace Runtime Channels?</div>
+                            <div id="confirm-import-channels-text" class="ts-text is-description has-top-spaced-small">
+                                This will replace the current runtime channel list.
+                            </div>
+                            <div class="ts-grid is-relaxed is-3-columns has-top-spaced">
+                                <div class="column"><span class="ts-badge is-positive">Added <span id="confirm-import-added-count">0</span></span></div>
+                                <div class="column"><span class="ts-badge is-negative">Removed <span id="confirm-import-removed-count">0</span></span></div>
+                                <div class="column"><span class="ts-badge is-secondary">Unchanged <span id="confirm-import-unchanged-count">0</span></span></div>
+                            </div>
+                            <details class="advanced-group has-top-spaced-small" open>
+                                <summary>Added channels</summary>
+                                <div id="confirm-import-added-list" class="ts-text is-description has-top-spaced-small import-preview-list">None</div>
+                            </details>
+                            <details class="advanced-group has-top-spaced-small" open>
+                                <summary>Removed channels</summary>
+                                <div id="confirm-import-removed-list" class="ts-text is-description has-top-spaced-small import-preview-list">None</div>
+                            </details>
+                            <details class="advanced-group has-top-spaced-small">
+                                <summary>Unchanged channels</summary>
+                                <div id="confirm-import-unchanged-list" class="ts-text is-description has-top-spaced-small import-preview-list">None</div>
+                            </details>
+                        </div>
+                        <div class="column">
+                            <button type="button" class="ts-close is-rounded is-large is-secondary" data-dialog="confirm-import-channels-dialog"></button>
+                        </div>
+                    </div>
+                </div>
+                <div class="ts-divider"></div>
+                <div class="ts-content is-horizontally-padded is-secondary">
+                    <div class="ts-wrap is-end-aligned">
+                        <button id="confirm-import-channels-cancel" type="button" class="ts-button is-outlined is-secondary" data-dialog="confirm-import-channels-dialog">Cancel</button>
+                        <button id="confirm-import-channels-apply" type="button" class="ts-button is-negative">Replace & Import</button>
+                    </div>
+                </div>
+            </div>
+        </dialog>
+        <!-- / Import Channels Confirmation Dialog -->
 
         <!-- Create Dialog -->
         <dialog id="create-dialog" class="ts-modal" style="--width: 680px">
@@ -618,6 +946,16 @@
                             </div>
                         </div>
                         <!-- / Channel Username -->
+
+                        <div id="bulk-add-control" class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Bulk Add Models</div>
+                            <div class="content">
+                                <div class="ts-input">
+                                    <textarea id="create-usernames-bulk" name="usernames_bulk" rows="6" placeholder="Paste one model per line\nanna_model\nstar_girl\npro-streamer"></textarea>
+                                </div>
+                                <div class="ts-text is-description has-top-spaced-small">Supports line breaks, commas, semicolons, and mixed formats. Duplicates are ignored automatically.</div>
+                            </div>
+                        </div>
 
                         <!-- Site -->
                         <div class="ts-control is-wide has-top-spaced-large">
@@ -977,6 +1315,86 @@
                 });
             }
 
+            function setSettingsTab(tab, persist) {
+                if (persist === undefined) persist = true;
+                const panes = document.querySelectorAll('.settings-pane');
+                const tabs = document.querySelectorAll('.settings-tab-btn');
+                panes.forEach(function(pane) {
+                    pane.classList.toggle('is-active', pane.dataset.settingsPane === tab);
+                });
+                tabs.forEach(function(btn) {
+                    btn.classList.toggle('is-active', btn.dataset.settingsTab === tab);
+                });
+                if (persist) {
+                    localStorage.setItem('dvr-settings-tab', tab);
+                }
+            }
+
+            function applySettingsSearch(query) {
+                const q = (query || '').trim().toLowerCase();
+                const panes = document.querySelectorAll('.settings-pane');
+                const tabs = document.querySelectorAll('.settings-tab-btn');
+                let firstMatchTab = null;
+
+                panes.forEach(function(pane) {
+                    const items = Array.from(pane.children).filter(function(el) {
+                        return !el.classList.contains('ts-header') && !el.classList.contains('ts-divider');
+                    });
+                    let hasMatch = false;
+
+                    items.forEach(function(item) {
+                        const text = (item.textContent || '').toLowerCase();
+                        const match = q === '' || text.indexOf(q) !== -1;
+                        item.classList.toggle('is-search-hidden', !match);
+                        if (q !== '' && item.tagName && item.tagName.toLowerCase() === 'details' && match) {
+                            item.open = true;
+                        }
+                        if (match) hasMatch = true;
+                    });
+
+                    pane.dataset.searchHasMatch = hasMatch ? '1' : '0';
+                    if (hasMatch && firstMatchTab === null) {
+                        firstMatchTab = pane.dataset.settingsPane;
+                    }
+                });
+
+                tabs.forEach(function(btn) {
+                    const pane = document.querySelector('.settings-pane[data-settings-pane="' + btn.dataset.settingsTab + '"]');
+                    const hasMatch = pane && pane.dataset.searchHasMatch === '1';
+                    btn.classList.toggle('is-muted', q !== '' && !hasMatch);
+                });
+
+                if (q !== '' && firstMatchTab) {
+                    setSettingsTab(firstMatchTab, false);
+                }
+            }
+
+            function initSettingsSearch() {
+                const input = document.getElementById('settings-search');
+                if (!input) return;
+                input.addEventListener('input', function() {
+                    applySettingsSearch(input.value || '');
+                });
+                applySettingsSearch(input.value || '');
+            }
+
+            function initSettingsTabs() {
+                const tabs = document.querySelectorAll('.settings-tab-btn');
+                if (!tabs.length) return;
+
+                tabs.forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        setSettingsTab(btn.dataset.settingsTab);
+                    });
+                });
+
+                const stored = localStorage.getItem('dvr-settings-tab');
+                const valid = Array.from(tabs).some(function(btn) {
+                    return btn.dataset.settingsTab === stored;
+                });
+                setSettingsTab(valid ? stored : 'recording');
+            }
+
 
             // before content was swapped by HTMX
             document.body.addEventListener("htmx:sseBeforeMessage", function (e) {
@@ -1098,6 +1516,154 @@
             }
 
             document.getElementById('smb-test-btn')?.addEventListener('click', runSMBTest);
+
+            function setTransferStatus(text, isError) {
+                const el = document.getElementById('settings-transfer-status');
+                if (!el) return;
+                el.textContent = text || '';
+                el.className = isError ? 'ts-text is-negative has-top-spaced-small' : 'ts-text is-description has-top-spaced-small';
+            }
+
+            function triggerDownload(url) {
+                const a = document.createElement('a');
+                a.href = url;
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            }
+
+            async function validateImport(validateEndpoint, file, label) {
+                const fd = new FormData();
+                fd.append('file', file, file.name || 'import.json');
+                setTransferStatus('Validating ' + label + '...');
+
+                const res = await fetch(validateEndpoint, { method: 'POST', body: fd });
+                const data = await res.json().catch(() => ({ ok: false, message: 'Invalid server response' }));
+                if (!res.ok || !data.ok) {
+                    throw new Error(data.message || ('Validation failed for ' + label));
+                }
+                return data;
+            }
+
+            function formatPreviewList(items) {
+                if (!items || !items.length) return 'None';
+                const max = 16;
+                const lines = items.slice(0, max);
+                const rest = items.length - lines.length;
+                return lines.join('\n') + (rest > 0 ? ('\n...and ' + rest + ' more') : '');
+            }
+
+            function confirmChannelsImport(message, preview) {
+                const dialog = document.getElementById('confirm-import-channels-dialog');
+                const text = document.getElementById('confirm-import-channels-text');
+                const okBtn = document.getElementById('confirm-import-channels-apply');
+                const cancelBtn = document.getElementById('confirm-import-channels-cancel');
+
+                const addedCountEl = document.getElementById('confirm-import-added-count');
+                const removedCountEl = document.getElementById('confirm-import-removed-count');
+                const unchangedCountEl = document.getElementById('confirm-import-unchanged-count');
+                const addedListEl = document.getElementById('confirm-import-added-list');
+                const removedListEl = document.getElementById('confirm-import-removed-list');
+                const unchangedListEl = document.getElementById('confirm-import-unchanged-list');
+                if (!dialog || !okBtn || !cancelBtn) return Promise.resolve(confirm(message));
+
+                if (text) text.textContent = message;
+                const added = (preview && preview.added) || [];
+                const removed = (preview && preview.removed) || [];
+                const unchanged = (preview && preview.unchanged) || [];
+                if (addedCountEl) addedCountEl.textContent = String(added.length);
+                if (removedCountEl) removedCountEl.textContent = String(removed.length);
+                if (unchangedCountEl) unchangedCountEl.textContent = String(unchanged.length);
+                if (addedListEl) addedListEl.textContent = formatPreviewList(added);
+                if (removedListEl) removedListEl.textContent = formatPreviewList(removed);
+                if (unchangedListEl) unchangedListEl.textContent = formatPreviewList(unchanged);
+
+                return new Promise((resolve) => {
+                    let resolved = false;
+                    const cleanup = () => {
+                        okBtn.removeEventListener('click', onOK);
+                        cancelBtn.removeEventListener('click', onCancel);
+                        dialog.removeEventListener('close', onClose);
+                    };
+                    const onOK = () => {
+                        if (resolved) return;
+                        resolved = true;
+                        cleanup();
+                        dialog.close();
+                        resolve(true);
+                    };
+                    const onCancel = () => {
+                        if (resolved) return;
+                        resolved = true;
+                        cleanup();
+                        dialog.close();
+                        resolve(false);
+                    };
+                    const onClose = () => {
+                        if (resolved) return;
+                        resolved = true;
+                        cleanup();
+                        resolve(false);
+                    };
+
+                    okBtn.addEventListener('click', onOK);
+                    cancelBtn.addEventListener('click', onCancel);
+                    dialog.addEventListener('close', onClose);
+                    dialog.showModal();
+                });
+            }
+
+            async function importJSON(endpoint, file, label) {
+                if (!file) return;
+                const fd = new FormData();
+                fd.append('file', file, file.name || 'import.json');
+                setTransferStatus('Importing ' + label + '...');
+                try {
+                    const res = await fetch(endpoint, { method: 'POST', body: fd });
+                    const data = await res.json().catch(() => ({ ok: false, message: 'Invalid server response' }));
+                    if (!res.ok || !data.ok) {
+                        setTransferStatus(data.message || 'Import failed', true);
+                        return;
+                    }
+                    setTransferStatus(data.message || (label + ' imported'));
+                    window.location.reload();
+                } catch (_err) {
+                    setTransferStatus('Import failed: network error', true);
+                }
+            }
+
+            async function validateThenImportSettings(file) {
+                if (!file) return;
+                try {
+                    await validateImport('/api/import/validate/settings', file, 'settings');
+                    await importJSON('/api/import/settings', file, 'settings');
+                } catch (err) {
+                    setTransferStatus(err && err.message ? err.message : 'Validation failed', true);
+                }
+            }
+
+            async function validateThenImportChannels(file) {
+                if (!file) return;
+                try {
+                    const validation = await validateImport('/api/import/validate/channels', file, 'channels');
+                    const count = Number(validation && validation.incoming_count ? validation.incoming_count : (validation && validation.count ? validation.count : 0));
+                    const current = Number(validation && validation.current_count ? validation.current_count : 0);
+                    const ok = await confirmChannelsImport(
+                        count > 0
+                            ? ('Validated channels file with ' + count + ' channel(s). Current runtime has ' + current + '. Import will replace runtime channels. Continue?')
+                            : 'Validated channels file. Import will replace the current runtime channel list. Continue?',
+                        validation
+                    );
+                    if (!ok) {
+                        setTransferStatus('Channels import cancelled');
+                        return;
+                    }
+                    await importJSON('/api/import/channels', file, 'channels');
+                } catch (err) {
+                    setTransferStatus(err && err.message ? err.message : 'Validation failed', true);
+                }
+            }
 
             let clipsChannelID = '';
             let clipsUsername = '';
@@ -1332,13 +1898,42 @@
             document.addEventListener("DOMContentLoaded", function() {
                 const savedView = localStorage.getItem('dvr-view') || 'expanded';
                 setView(savedView);
+                initSettingsTabs();
+                initSettingsSearch();
                 initThumbSwitchers();
                 initMarquees();
+
+                document.getElementById('export-settings-btn')?.addEventListener('click', () => {
+                    triggerDownload('/api/export/settings');
+                });
+                document.getElementById('export-channels-btn')?.addEventListener('click', () => {
+                    triggerDownload('/api/export/channels');
+                });
+
+                const importSettingsBtn = document.getElementById('import-settings-btn');
+                const importSettingsFile = document.getElementById('import-settings-file');
+                importSettingsBtn?.addEventListener('click', () => importSettingsFile?.click());
+                importSettingsFile?.addEventListener('change', (e) => {
+                    const file = e.target && e.target.files ? e.target.files[0] : null;
+                    validateThenImportSettings(file);
+                    if (importSettingsFile) importSettingsFile.value = '';
+                });
+
+                const importChannelsBtn = document.getElementById('import-channels-btn');
+                const importChannelsFile = document.getElementById('import-channels-file');
+                importChannelsBtn?.addEventListener('click', () => importChannelsFile?.click());
+                importChannelsFile?.addEventListener('change', (e) => {
+                    const file = e.target && e.target.files ? e.target.files[0] : null;
+                    validateThenImportChannels(file);
+                    if (importChannelsFile) importChannelsFile.value = '';
+                });
 
                 const createForm = document.getElementById('create-channel-form');
                 const createTitle = document.getElementById('create-dialog-title');
                 const createSubmit = document.getElementById('create-submit-btn');
                 const usernameInput = document.getElementById('create-username');
+                const bulkAddControl = document.getElementById('bulk-add-control');
+                const bulkTextarea = document.getElementById('create-usernames-bulk');
                 const siteSelect = document.getElementById('create-site');
                 const patternInput = document.getElementById('create-pattern');
                 const maxDurationInput = document.getElementById('create-max-duration');
@@ -1353,6 +1948,12 @@
                     if (createTitle) createTitle.textContent = 'Add Channel';
                     if (createSubmit) createSubmit.textContent = 'Add Channel';
                     if (usernameInput) usernameInput.readOnly = false;
+                    if (usernameInput) usernameInput.required = true;
+                    if (bulkTextarea) {
+                        bulkTextarea.disabled = false;
+                        bulkTextarea.value = '';
+                    }
+                    if (bulkAddControl) bulkAddControl.style.display = '';
                     if (siteSelect) siteSelect.disabled = false;
                 }
 
@@ -1366,7 +1967,13 @@
                     if (usernameInput) {
                         usernameInput.value = btn.dataset.username || '';
                         usernameInput.readOnly = true;
+                        usernameInput.required = false;
                     }
+                    if (bulkTextarea) {
+                        bulkTextarea.value = '';
+                        bulkTextarea.disabled = true;
+                    }
+                    if (bulkAddControl) bulkAddControl.style.display = 'none';
                     if (siteSelect) {
                         siteSelect.value = btn.dataset.site || 'chaturbate';
                         siteSelect.disabled = true;

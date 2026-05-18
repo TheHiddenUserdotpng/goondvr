@@ -113,6 +113,12 @@ func SetupViews(r *gin.Engine) {
 	r.POST("/api/clip_batch/:channelID", ClipBatch)
 	r.POST("/api/combine_clips/:channelID", CombineClips)
 	r.POST("/api/smb_test", TestSMB)
+	r.GET("/api/export/settings", ExportSettings)
+	r.GET("/api/export/channels", ExportChannels)
+	r.POST("/api/import/validate/settings", ValidateImportSettings)
+	r.POST("/api/import/validate/channels", ValidateImportChannels)
+	r.POST("/api/import/settings", ImportSettings)
+	r.POST("/api/import/channels", ImportChannels)
 	r.GET("/api/stats", Stats)
 }
 
