@@ -7,7 +7,7 @@
         <script src="https://cdnjs.cloudflare.com/ajax/libs/tocas/5.0.1/tocas.min.js"></script>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
         <script src="/static/scripts/htmx.min.js" crossorigin="anonymous"></script>
         <script src="/static/scripts/sse.min.js" crossorigin="anonymous"></script>
         <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
@@ -16,6 +16,19 @@
         <link rel="manifest" href="/static/site.webmanifest">
         <title>Modded | GoondVR</title>
         <style>
+            :root {
+                --ui-bg: #f3f6f9;
+                --ui-ink: #0f1a2b;
+                --ui-muted: #5e6b7f;
+                --ui-surface: #ffffff;
+                --ui-surface-soft: #f8fbff;
+                --ui-border: #dbe3ec;
+                --ui-accent: #0f766e;
+                --ui-accent-2: #1d4ed8;
+                --ui-danger: #b42318;
+                --ui-shadow: 0 16px 40px rgba(15, 26, 43, 0.08);
+            }
+
             /* View mode: grid and collapsed hidden by default (expanded is default) */
             .view-grid, .view-collapsed { display: none; }
 
@@ -75,24 +88,43 @@
             .view-toggle-btn.is-active { background: var(--ts-gray-800) !important; color: var(--ts-white) !important; }
 
             body {
+                font-family: 'Sora', 'Noto Sans TC', sans-serif;
+                color: var(--ui-ink);
                 background:
-                    radial-gradient(1200px 500px at 100% -10%, rgba(33, 150, 243, 0.10), transparent 60%),
-                    radial-gradient(900px 420px at -10% 0%, rgba(0, 200, 180, 0.08), transparent 60%),
-                    linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+                    radial-gradient(900px 420px at -5% -10%, rgba(29, 78, 216, 0.18), transparent 66%),
+                    radial-gradient(1000px 500px at 100% -12%, rgba(15, 118, 110, 0.2), transparent 68%),
+                    linear-gradient(180deg, #f4f8fc 0%, #edf2f8 100%);
+                min-height: 100vh;
+            }
+
+            .app-shell {
+                max-width: 1240px;
             }
 
             .top-toolbar {
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 12px;
-                padding: 0.85rem 0.95rem;
-                background: rgba(17, 23, 32, 0.42);
-                backdrop-filter: blur(4px);
+                border: 1px solid rgba(15, 26, 43, 0.08);
+                border-radius: 18px;
+                padding: 1rem 1.1rem;
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(245, 250, 255, 0.88));
+                box-shadow: var(--ui-shadow);
                 margin-bottom: 0.8rem;
             }
 
+            .top-toolbar .ts-header {
+                letter-spacing: 0.08em;
+                color: #0f1a2b;
+            }
+
+            .top-toolbar .ts-meta,
+            .top-toolbar .ts-text.is-description {
+                color: var(--ui-muted);
+            }
+
             .status-panel {
-                border: 1px solid rgba(255,255,255,0.08);
-                box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+                border: 1px solid var(--ui-border);
+                border-radius: 14px;
+                background: var(--ui-surface);
+                box-shadow: var(--ui-shadow);
             }
 
             .settings-tabs {
@@ -103,9 +135,9 @@
             }
 
             .settings-tab-btn {
-                border: 1px solid rgba(255,255,255,0.10);
-                background: rgba(255,255,255,0.03);
-                color: rgba(255,255,255,0.78);
+                border: 1px solid var(--ui-border);
+                background: var(--ui-surface-soft);
+                color: var(--ui-muted);
                 border-radius: 999px;
                 padding: 0.35rem 0.75rem;
                 font-size: 12px;
@@ -113,9 +145,9 @@
             }
 
             .settings-tab-btn.is-active {
-                background: rgba(38, 166, 154, 0.18);
-                border-color: rgba(38, 166, 154, 0.5);
-                color: #d8fffb;
+                background: rgba(15, 118, 110, 0.13);
+                border-color: rgba(15, 118, 110, 0.55);
+                color: #0f5d57;
             }
 
             .settings-pane {
@@ -141,24 +173,24 @@
                 padding: 0.1rem 0.45rem;
                 border-radius: 999px;
                 font-size: 11px;
-                color: rgba(205, 244, 255, 0.95);
-                border: 1px solid rgba(65, 184, 213, 0.55);
-                background: rgba(28, 126, 159, 0.2);
+                color: #115e59;
+                border: 1px solid rgba(15, 118, 110, 0.35);
+                background: rgba(15, 118, 110, 0.12);
                 vertical-align: middle;
             }
 
             .advanced-group {
                 margin-top: 1rem;
-                border: 1px dashed rgba(255,255,255,0.2);
+                border: 1px dashed #bfd0e3;
                 border-radius: 10px;
                 padding: 0.55rem 0.7rem;
-                background: rgba(255,255,255,0.02);
+                background: #fbfdff;
             }
 
             .advanced-group > summary {
                 cursor: pointer;
                 font-weight: 600;
-                color: rgba(255,255,255,0.9);
+                color: #1f3552;
                 list-style: none;
                 margin-bottom: 0.2rem;
             }
@@ -191,23 +223,415 @@
                 max-height: 120px;
                 overflow: auto;
             }
+
+            .ts-box {
+                border: 1px solid var(--ui-border);
+                border-radius: 14px;
+                background: var(--ui-surface);
+            }
+
+            .channel-box {
+                border: 1px solid var(--ui-border);
+                border-radius: 16px;
+                box-shadow: 0 10px 28px rgba(17, 36, 62, 0.07);
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                overflow: hidden;
+            }
+
+            .channel-box:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 16px 34px rgba(17, 36, 62, 0.12);
+            }
+
+            #channels-list .channel-box {
+                animation: revealCard 0.35s ease both;
+            }
+
+            #channels-list .channel-box:nth-child(2) { animation-delay: 0.03s; }
+            #channels-list .channel-box:nth-child(3) { animation-delay: 0.06s; }
+            #channels-list .channel-box:nth-child(4) { animation-delay: 0.09s; }
+            #channels-list .channel-box:nth-child(5) { animation-delay: 0.12s; }
+            #channels-list .channel-box:nth-child(6) { animation-delay: 0.15s; }
+
+            @keyframes revealCard {
+                from { opacity: 0; transform: translateY(10px) scale(0.995); }
+                to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+
+            .ts-button {
+                border-radius: 10px;
+                font-weight: 600;
+            }
+
+            .ts-button.is-primary {
+                background: linear-gradient(140deg, #0f766e, #1d4ed8) !important;
+                border: none !important;
+            }
+
+            .view-toggle-btn.is-active {
+                background: linear-gradient(130deg, #0f766e, #145fcb) !important;
+                color: #fff !important;
+                border-color: transparent !important;
+            }
+
+            .ts-badge {
+                border-radius: 999px;
+            }
+
+            .ts-modal .content {
+                border-radius: 16px;
+                border: 1px solid var(--ui-border);
+                overflow: hidden;
+            }
+
+            .ts-input textarea,
+            .ts-input input,
+            .ts-select select {
+                font-family: 'Sora', 'Noto Sans TC', sans-serif;
+            }
+
+            #smb-log-textarea,
+            .channel-log textarea {
+                font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                font-size: 12px;
+                background: #f8fbff;
+                border-color: #d6e0ea;
+            }
+
+            .img-switcher {
+                background: #0f1728;
+            }
+
+            #stats-bar {
+                border: 1px solid #d6e2ef;
+                border-radius: 12px;
+                padding: 0.45rem 0.7rem;
+                background: rgba(255, 255, 255, 0.78);
+                backdrop-filter: blur(4px);
+            }
+
+            /* Dark redesign overrides */
+            :root {
+                --ui-bg: #090d14;
+                --ui-ink: #e9eef8;
+                --ui-muted: #9aa8c0;
+                --ui-surface: #121a28;
+                --ui-surface-soft: #172233;
+                --ui-border: #243247;
+                --ui-accent: #0ea5a4;
+                --ui-accent-2: #3b82f6;
+                --ui-danger: #ef4444;
+                --ui-shadow: 0 22px 40px rgba(0, 0, 0, 0.45);
+            }
+
+            body {
+                color: var(--ui-ink);
+                background:
+                    radial-gradient(1100px 520px at -8% -15%, rgba(59, 130, 246, 0.22), transparent 64%),
+                    radial-gradient(1100px 520px at 105% -20%, rgba(20, 184, 166, 0.2), transparent 65%),
+                    linear-gradient(180deg, #090d14 0%, #0e1522 55%, #0b1019 100%);
+            }
+
+            .top-toolbar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 1rem;
+                border: 1px solid rgba(77, 103, 139, 0.35);
+                border-radius: 20px;
+                padding: 1rem 1.2rem;
+                background:
+                    linear-gradient(140deg, rgba(18, 26, 40, 0.93), rgba(15, 22, 34, 0.93)),
+                    linear-gradient(90deg, rgba(14, 165, 164, 0.14), rgba(59, 130, 246, 0.12));
+                box-shadow: var(--ui-shadow);
+                backdrop-filter: blur(8px);
+            }
+
+            .toolbar-meta {
+                display: flex;
+                flex-direction: column;
+                gap: 0.22rem;
+                min-width: 0;
+            }
+
+            .toolbar-controls {
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                flex-wrap: wrap;
+                gap: 0.62rem;
+            }
+
+            .top-toolbar .ts-header {
+                color: #f2f7ff;
+                text-shadow: 0 0 22px rgba(59, 130, 246, 0.24);
+            }
+
+            .top-toolbar .ts-meta,
+            .top-toolbar .ts-text.is-description {
+                color: #a8b6ce !important;
+            }
+
+            #stats-bar {
+                border: 1px solid #2a3a53;
+                border-radius: 13px;
+                background: rgba(17, 27, 43, 0.74);
+                box-shadow: inset 0 1px 0 rgba(120, 158, 212, 0.16);
+                color: #dce6f8;
+            }
+
+            #stat-disk-bar {
+                background: rgba(203, 225, 255, 0.12) !important;
+            }
+
+            #stat-disk-fill {
+                background: linear-gradient(90deg, #14b8a6, #3b82f6) !important;
+            }
+
+            .status-panel,
+            .ts-box {
+                border: 1px solid var(--ui-border);
+                background: linear-gradient(165deg, rgba(18, 26, 40, 0.95), rgba(14, 21, 34, 0.95));
+                box-shadow: var(--ui-shadow);
+            }
+
+            .channel-box {
+                border: 1px solid #2a3b56;
+                border-radius: 16px;
+                background: linear-gradient(170deg, rgba(20, 29, 45, 0.96), rgba(15, 22, 34, 0.96));
+                box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+            }
+
+            .channel-box:hover {
+                transform: translateY(-3px);
+                border-color: #3b567c;
+                box-shadow: 0 20px 42px rgba(0, 0, 0, 0.5);
+            }
+
+            .ts-divider {
+                border-color: rgba(143, 168, 204, 0.18) !important;
+            }
+
+            .ts-text.is-description,
+            .ts-meta,
+            .ts-text.is-small {
+                color: #9dafca !important;
+            }
+
+            .ts-header,
+            strong,
+            .ts-text.is-bold {
+                color: #e9f0ff;
+            }
+
+            .ts-input textarea,
+            .ts-input input,
+            .ts-select select {
+                background: #0f1725 !important;
+                border-color: #31435f !important;
+                color: #e8efff !important;
+            }
+
+            .ts-input textarea::placeholder,
+            .ts-input input::placeholder {
+                color: #7f90ab;
+            }
+
+            #smb-log-textarea,
+            .channel-log textarea {
+                background: #0b1320 !important;
+                border-color: #2d405d !important;
+                color: #b9cae6;
+            }
+
+            .settings-tab-btn {
+                border: 1px solid #334765;
+                background: #142032;
+                color: #a8bad5;
+            }
+
+            .settings-tab-btn.is-active {
+                background: linear-gradient(135deg, rgba(14, 165, 164, 0.2), rgba(59, 130, 246, 0.18));
+                border-color: #3f648f;
+                color: #def2ff;
+            }
+
+            .advanced-group {
+                border: 1px dashed #3a4d69;
+                background: rgba(16, 24, 37, 0.72);
+            }
+
+            .advanced-group > summary {
+                color: #d7e4fa;
+            }
+
+            .ts-button {
+                border-radius: 11px;
+                border-color: #385170 !important;
+                background: #162437 !important;
+                color: #dbe8ff !important;
+            }
+
+            .ts-button:hover {
+                background: #1c2e47 !important;
+            }
+
+            .ts-button.is-primary,
+            #open-create-channel-btn {
+                background: linear-gradient(140deg, #0ea5a4, #2563eb) !important;
+                border: none !important;
+                color: #f3fbff !important;
+            }
+
+            .ts-button.is-negative {
+                background: #3a1620 !important;
+                border-color: #6f2a3c !important;
+            }
+
+            .view-toggle-btn.is-active {
+                background: linear-gradient(130deg, #0ea5a4, #2563eb) !important;
+                color: #f4faff !important;
+                border-color: transparent !important;
+            }
+
+            .ts-modal .content {
+                border: 1px solid #2b3d57;
+                background: #121b2a;
+            }
+
+            .ts-content.is-secondary {
+                background: rgba(15, 23, 36, 0.75) !important;
+            }
+
+            /* Settings dialog specific dark polish */
+            #settings-dialog .content {
+                background: linear-gradient(170deg, #101a2a, #0e1624);
+                border: 1px solid #2e435f;
+            }
+
+            #settings-dialog .ts-content {
+                background: transparent;
+            }
+
+            #settings-dialog .ts-content.is-secondary {
+                background: rgba(14, 22, 35, 0.9) !important;
+            }
+
+            #settings-dialog .ts-header,
+            #settings-dialog .ts-text.is-bold,
+            #settings-dialog .label {
+                color: #e7f0ff !important;
+            }
+
+            #settings-dialog .ts-text.is-description {
+                color: #9db0cf !important;
+            }
+
+            #settings-dialog .ts-control {
+                border-color: #2e405a;
+            }
+
+            #settings-dialog .ts-input input,
+            #settings-dialog .ts-input textarea,
+            #settings-dialog .ts-select select {
+                background: #0b1320 !important;
+                border-color: #39506f !important;
+                color: #e4eeff !important;
+            }
+
+            #settings-dialog .ts-input input:focus,
+            #settings-dialog .ts-input textarea:focus,
+            #settings-dialog .ts-select select:focus {
+                border-color: #4f81bc !important;
+                box-shadow: 0 0 0 1px rgba(79, 129, 188, 0.35);
+            }
+
+            #settings-dialog .settings-tab-btn {
+                background: #132134;
+                border-color: #375272;
+                color: #bdd0eb;
+            }
+
+            #settings-dialog .settings-tab-btn.is-active {
+                background: linear-gradient(130deg, rgba(14, 165, 164, 0.24), rgba(37, 99, 235, 0.22));
+                border-color: #5480b2;
+                color: #ecf7ff;
+            }
+
+            #settings-dialog .advanced-group {
+                background: rgba(11, 19, 32, 0.72);
+                border-color: #3a5477;
+            }
+
+            #settings-dialog .rec-badge {
+                color: #ccf7ff;
+                border-color: rgba(45, 212, 191, 0.55);
+                background: rgba(20, 184, 166, 0.2);
+            }
+
+            #settings-dialog .ts-divider {
+                border-color: rgba(148, 177, 219, 0.2) !important;
+            }
+
+            #settings-dialog .ts-button.is-outlined.is-secondary {
+                background: #162335 !important;
+                border-color: #3a5170 !important;
+                color: #c8daf4 !important;
+            }
+
+            .ts-blankslate {
+                border: 1px dashed #355075;
+                border-radius: 16px;
+                background: rgba(15, 25, 39, 0.7);
+                padding: 2rem 1rem;
+            }
+
+            @media (max-width: 960px) {
+                .top-toolbar {
+                    flex-direction: column;
+                    align-items: flex-start;
+                }
+
+                .toolbar-controls {
+                    width: 100%;
+                    justify-content: flex-start;
+                }
+
+                .app-shell {
+                    max-width: 100%;
+                }
+
+                .channel-box {
+                    border-radius: 12px;
+                }
+
+                .channel-info {
+                    width: 100% !important;
+                    padding-right: 1rem !important;
+                }
+
+                .channel-log {
+                    min-height: 230px;
+                }
+            }
         </style>
     </head>
 
     <body hx-ext="sse">
         <!-- Main Section -->
-        <div class="ts-container has-vertically-padded-big" style="--width: 990px">
+        <div class="ts-container has-vertically-padded-big app-shell" style="--width: 1240px">
             <!-- Header -->
-            <div class="ts-grid is-bottom-aligned top-toolbar">
-                <div class="column is-fluid">
+            <div class="top-toolbar">
+                <div class="toolbar-meta">
                     <div class="ts-header is-huge is-uppercased is-heavy has-leading-small">GoondVR</div>
                     <div class="ts-meta">
                         <div class="item">
                             <span class="ts-text is-description is-bold">VERSION v{{ .Config.Version }}</span>
                         </div>
                     </div>
+                    <div class="ts-text is-description is-small">Dark Ops Dashboard for channels, capture, and upload health</div>
                 </div>
-                <div class="column">
+                <div class="toolbar-controls">
                     <!-- View Toggle -->
                     <div class="ts-button-group is-small">
                         <button id="view-btn-expanded" class="ts-button view-toggle-btn is-outlined" onclick="setView('expanded')" title="Expanded view">
@@ -220,14 +644,10 @@
                             <span class="ts-icon is-bars-icon"></span>
                         </button>
                     </div>
-                </div>
-                <div class="column">
                     <button class="ts-button is-start-icon is-outlined" data-dialog="settings-dialog">
                         <span class="ts-icon is-gear-icon"></span>
                         Settings
                     </button>
-                </div>
-                <div class="column">
                     <button id="open-create-channel-btn" class="ts-button is-start-icon js-add-channel" data-dialog="create-dialog">
                         <span class="ts-icon is-plus-icon"></span>
                         Add Channel
