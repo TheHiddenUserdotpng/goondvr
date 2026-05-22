@@ -106,6 +106,12 @@ $ docker run -d \
 $ docker compose up -d
 ```
 
+To set a specific app version in a local Docker build (shown in UI/`--version`), pass `APP_VERSION` when building:
+
+```bash
+$ APP_VERSION=v4.0.4 docker compose up -d --build
+```
+
 Then visit [`http://localhost:8080`](http://localhost:8080) in your browser.
 
 ## Version Handling
