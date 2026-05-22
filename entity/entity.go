@@ -71,6 +71,7 @@ type ChannelInfo struct {
 	ViewMode         string
 	IsOnline         bool
 	IsPaused         bool
+	IsSkipCurrent    bool
 	HealthScore      int
 	HealthStatus     string
 	HealthSummary    string

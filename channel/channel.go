@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/HeapOfChaos/goondvr/entity"
@@ -53,6 +54,7 @@ type Channel struct {
 	monitorRestartRequested bool
 	monitorRunID            uint64
 	monitorDone             chan struct{}
+	skipCurrentStream       atomic.Bool
 	doneOnce                sync.Once
 
 	File           *os.File
@@ -178,6 +180,7 @@ func (ch *Channel) ExportInfo() *entity.ChannelInfo {
 		ChannelID:        channelID,
 		IsOnline:         ch.IsOnline,
 		IsPaused:         ch.Config.IsPaused,
+		IsSkipCurrent:    ch.skipCurrentStream.Load(),
 		HealthScore:      ch.healthScore(),
 		HealthStatus:     ch.healthStatus(),
 		HealthSummary:    ch.healthSummary(),
@@ -264,6 +267,7 @@ func (ch *Channel) Pause() {
 	ch.Config.IsPaused = true
 	ch.monitorMu.Unlock()
 	ch.CancelFunc()
+	ch.skipCurrentStream.Store(false)
 
 	ch.Update()
 	ch.Info("channel paused")
@@ -289,6 +293,7 @@ func (ch *Channel) Stop() {
 // `startSeq` is used to prevent all channels from starting at the same time, preventing TooManyRequests errors.
 // It's only be used when program starting and trying to resume all channels at once.
 func (ch *Channel) Resume(startSeq int) {
+	ch.skipCurrentStream.Store(false)
 	go func() {
 		<-time.After(time.Duration(startSeq) * time.Second)
 		runID, ok := ch.requestMonitorStart()
@@ -299,6 +304,37 @@ func (ch *Channel) Resume(startSeq int) {
 		ch.Info("channel resumed")
 		ch.Monitor(runID)
 	}()
+}
+
+// SkipCurrentStream stops recording of the currently active stream and waits
+// for the next offline->online transition before recording resumes.
+func (ch *Channel) SkipCurrentStream() {
+	if ch.Config.IsPaused {
+		ch.Info("skip current stream ignored: channel is paused")
+		return
+	}
+	if !ch.IsOnline {
+		ch.Info("skip current stream ignored: channel is not live")
+		return
+	}
+	if !ch.skipCurrentStream.CompareAndSwap(false, true) {
+		ch.Info("skip current stream is already active")
+		return
+	}
+	ch.Update()
+	ch.Info("skipping current live stream until channel goes offline")
+}
+
+func (ch *Channel) ShouldSkipCurrentStream() bool {
+	return ch.skipCurrentStream.Load()
+}
+
+func (ch *Channel) ClearSkipCurrentStream() bool {
+	cleared := ch.skipCurrentStream.Swap(false)
+	if cleared {
+		ch.Update()
+	}
+	return cleared
 }
 
 // UpdateOnlineStatus updates the online status of the channel.

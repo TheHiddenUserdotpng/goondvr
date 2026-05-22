@@ -678,14 +678,36 @@
             <!-- / Stats Bar -->
 
             <div class="ts-box has-top-spaced-large status-panel" sse-connect="/updates?stream=updates">
-                <div class="ts-content is-padded" style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem;">
+                <div class="ts-content is-padded" style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap;">
                     <div class="ts-header is-small">SMB Upload Status</div>
-                    <label class="ts-switch is-small" style="display:flex">
-                        <input id="smb-log-autoscroll" type="checkbox" checked />
-                        Auto-Scroll SMB Log
-                    </label>
+                    <div style="display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap;">
+                        <button id="smb-upload-all-btn" type="button" class="ts-button is-small" onclick="smbUploadAll(this)">
+                            <span class="ts-icon is-upload-icon"></span> Upload alle til SMB
+                        </button>
+                        <label class="ts-switch is-small" style="display:flex">
+                            <input id="smb-log-autoscroll" type="checkbox" checked />
+                            Auto-Scroll
+                        </label>
+                    </div>
                 </div>
                 <div class="ts-divider"></div>
+                <!-- Transfer Queue -->
+                <div id="smb-queue-section" style="display:none; padding:0.75rem 1rem 0;">
+                    <div class="ts-text is-description" style="font-size:12px; margin-bottom:0.4rem; text-transform:uppercase; letter-spacing:0.05em;">Overførselskø</div>
+                    <div id="smb-queue-table" style="overflow-x:auto;">
+                        <table class="ts-table is-small" style="width:100%; font-size:12px;">
+                            <thead>
+                                <tr>
+                                    <th>Fil</th>
+                                    <th>Kanal</th>
+                                    <th>Status</th>
+                                    <th>Startet</th>
+                                </tr>
+                            </thead>
+                            <tbody id="smb-queue-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
                 <div class="ts-content is-padded">
                     <div class="ts-input">
                         <textarea id="smb-log-textarea" rows="7" readonly sse-swap="smb-log" style="scrollbar-width: thin">{{ range .SMBLogs }}{{ . }}&NewLine;{{ end }}</textarea>
@@ -1459,14 +1481,14 @@
                                             </div>
                                         </div>
                                         <div class="column">
-                                            <div class="ts-text is-bold">Max Duration</div>
+                                            <div class="ts-text is-bold">Split hver X minutter</div>
                                             <div class="ts-input is-end-labeled has-top-spaced-small">
-                                                <input id="create-max-duration" type="number" name="max_duration" value="{{ .Config.MaxDuration }}" />
+                                                <input id="create-max-duration" type="number" name="split_minutes" value="{{ .Config.MaxDuration }}" />
                                                 <span class="label">Min(s)</span>
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="ts-text is-description has-top-spaced">Splitting will be disabled if both options are 0.</div>
+                                    <div class="ts-text is-description has-top-spaced">Sæt f.eks. 30 for at oprette en ny fil hver 30. minut. Splitting er deaktiveret hvis begge felter er 0.</div>
                                 </div>
                             </div>
                         </div>
@@ -2223,7 +2245,7 @@
                 items.forEach((item, idx) => {
                     const card = document.createElement('button');
                     card.type = 'button';
-                    card.className = 'ts-button is-outlined';
+                    card.className = 'ts-button is-outlined recording-card';
                     card.style.cssText = 'display:flex; flex-direction:column; width:180px; padding:0; overflow:hidden; text-align:left;';
                     card.innerHTML = `
                         <img src="${item.thumb_url}" alt="thumb" style="width:100%; height:100px; object-fit:cover; background:#111;" />
@@ -2236,7 +2258,7 @@
                             preview.load();
                         }
                         if (previewName) previewName.textContent = item.name;
-                        Array.from(grid.querySelectorAll('button')).forEach(btn => btn.classList.add('is-outlined'));
+                        Array.from(grid.querySelectorAll('.recording-card')).forEach(btn => btn.classList.add('is-outlined'));
                         card.classList.remove('is-outlined');
                     });
                     grid.appendChild(card);
@@ -2313,6 +2335,89 @@
                     setClipsStatus('Failed to load clips data.', true);
                 }
             }
+
+            // ---- SMB Upload All + Queue Polling ----
+            let smbQueuePollTimer = null;
+
+            async function smbUploadAll(btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="ts-icon is-spinner-icon"></span> Starter...';
+                try {
+                    const res = await fetch('/api/manual_upload_all', { method: 'POST' });
+                    const data = await res.json();
+                    if (res.ok && data.ok) {
+                        btn.innerHTML = '<span class="ts-icon is-upload-icon"></span> Upload startet!';
+                        startSmbQueuePolling();
+                        setTimeout(() => {
+                            btn.disabled = false;
+                            btn.innerHTML = '<span class="ts-icon is-upload-icon"></span> Upload alle til SMB';
+                        }, 4000);
+                    } else {
+                        btn.innerHTML = '<span class="ts-icon is-upload-icon"></span> ' + (data.error || 'Fejl');
+                        btn.disabled = false;
+                    }
+                } catch (e) {
+                    btn.innerHTML = '<span class="ts-icon is-upload-icon"></span> Netfejl';
+                    btn.disabled = false;
+                }
+            }
+
+            function startSmbQueuePolling() {
+                if (smbQueuePollTimer) return;
+                refreshSmbQueue();
+                smbQueuePollTimer = setInterval(async () => {
+                    const active = await refreshSmbQueue();
+                    if (!active) {
+                        clearInterval(smbQueuePollTimer);
+                        smbQueuePollTimer = null;
+                    }
+                }, 2000);
+            }
+
+            async function refreshSmbQueue() {
+                try {
+                    const res = await fetch('/api/upload_queue');
+                    const data = await res.json();
+                    const items = (data && data.items) || [];
+                    renderSmbQueue(items);
+                    return items.some(i => i.status === 'uploading');
+                } catch (e) {
+                    return false;
+                }
+            }
+
+            function renderSmbQueue(items) {
+                const section = document.getElementById('smb-queue-section');
+                const tbody = document.getElementById('smb-queue-tbody');
+                if (!section || !tbody) return;
+                if (!items || items.length === 0) {
+                    section.style.display = 'none';
+                    return;
+                }
+                section.style.display = '';
+                tbody.innerHTML = '';
+                items.forEach(item => {
+                    const tr = document.createElement('tr');
+                    const statusColor = item.status === 'done' ? '#22c55e' : item.status === 'failed' ? '#ef4444' : '#f59e0b';
+                    const statusIcon = item.status === 'done' ? '✓' : item.status === 'failed' ? '✗' : '⟳';
+                    const started = item.started_at ? new Date(item.started_at).toLocaleTimeString() : '';
+                    tr.innerHTML = `
+                        <td style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${item.local_path}">${item.file_name}</td>
+                        <td style="white-space:nowrap; color:var(--ui-muted);">${item.channel_id}</td>
+                        <td style="white-space:nowrap; color:${statusColor}; font-weight:600;">${statusIcon} ${item.status}${item.error ? ': ' + item.error : ''}</td>
+                        <td style="white-space:nowrap; color:var(--ui-muted);">${started}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            // Poll once on page load to show any existing queue items.
+            document.addEventListener("DOMContentLoaded", function() {
+                refreshSmbQueue().then(active => {
+                    if (active) startSmbQueuePolling();
+                });
+            });
+            // ---- End SMB Upload All ----
 
             // Initial setup on page load
             document.addEventListener("DOMContentLoaded", function() {

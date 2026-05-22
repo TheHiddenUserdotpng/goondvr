@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -63,11 +64,26 @@ var (
 	channelStatus = map[string]ChannelStatus{}
 	recentSMBLogs []string
 
+	manualQueueMu sync.RWMutex
+	manualQueue   []ManualQueueItem
+
 	// StatusUpdateHook is called when a channel SMB status changes.
 	StatusUpdateHook func(channelID string)
 	// LogUpdateHook is called when the SMB log buffer changes.
 	LogUpdateHook func()
 )
+
+// ManualQueueItem tracks the state of a manual SMB upload.
+type ManualQueueItem struct {
+	ID           string    `json:"id"`
+	ChannelID    string    `json:"channel_id"`
+	FileName     string    `json:"file_name"`
+	LocalPath    string    `json:"local_path"`
+	Status       string    `json:"status"` // "uploading", "done", "failed"
+	ErrorMessage string    `json:"error,omitempty"`
+	StartedAt    time.Time `json:"started_at"`
+	CompletedAt  time.Time `json:"completed_at,omitempty"`
+}
 
 // UploadIfEnabled uploads localPath to TrueNAS SMB if upload is configured.
 // remoteRelPath is appended under SMBUploadBaseDir.
@@ -326,7 +342,7 @@ func upload(localPath, remoteRelPath string) error {
 	}
 
 	if isLikelyVideoFile(localPath) {
-		if err := os.Remove(localPath); err != nil {
+		if err := os.Remove(localPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove local file after verified upload: %w", err)
 		}
 	}
@@ -417,6 +433,96 @@ func equalBytes(a, b []byte) bool {
 func isLikelyVideoFile(filePath string) bool {
 	ext := strings.ToLower(path.Ext(filePath))
 	return ext == ".mp4" || ext == ".mkv" || ext == ".ts" || ext == ".mov"
+}
+
+// ManualUpload triggers an immediate SMB upload of localPath with remoteRelPath.
+// It runs in a background goroutine, tracks progress in the manual queue, and
+// deletes the local file on success (same as the automatic uploader).
+// Returns an error immediately if SMB is not configured or the file is missing.
+func ManualUpload(channelID, localPath, remoteRelPath string) error {
+	cfg := server.Config
+	if cfg == nil || !cfg.SMBUploadEnabled {
+		return fmt.Errorf("SMB upload er ikke aktiveret")
+	}
+	if cfg.SMBUploadHost == "" || cfg.SMBUploadShare == "" || cfg.SMBUploadUsername == "" {
+		return fmt.Errorf("SMB er ikke konfigureret (host/share/username mangler)")
+	}
+	if _, err := os.Stat(localPath); err != nil {
+		return fmt.Errorf("fil ikke fundet: %w", err)
+	}
+
+	item := ManualQueueItem{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		ChannelID: channelID,
+		FileName:  filepath.Base(localPath),
+		LocalPath: localPath,
+		Status:    "uploading",
+		StartedAt: time.Now(),
+	}
+	addManualQueueItem(item)
+
+	appendLog(channelID, fmt.Sprintf("manual upload startet: %s", localPath))
+	setChannelStatus(channelID, "warn", "Manuel SMB upload i gang...")
+
+	go func() {
+		err := upload(localPath, remoteRelPath)
+		if err != nil {
+			setChannelStatus(channelID, "bad", "Manuel SMB upload fejlede")
+			appendLog(channelID, fmt.Sprintf("manual upload FAILED: %s: %v", localPath, err))
+			updateManualQueueItem(item.ID, "failed", err.Error())
+			return
+		}
+		setChannelStatus(channelID, "good", "Manuel SMB upload OK")
+		appendLog(channelID, fmt.Sprintf("manual upload OK: %s -> %s", localPath, remoteRelPath))
+		updateManualQueueItem(item.ID, "done", "")
+		if StatusUpdateHook != nil {
+			StatusUpdateHook(channelID)
+		}
+		if LogUpdateHook != nil {
+			LogUpdateHook()
+		}
+	}()
+	return nil
+}
+
+func addManualQueueItem(item ManualQueueItem) {
+	manualQueueMu.Lock()
+	defer manualQueueMu.Unlock()
+	manualQueue = append(manualQueue, item)
+	// keep last 100 entries
+	if len(manualQueue) > 100 {
+		manualQueue = manualQueue[len(manualQueue)-100:]
+	}
+}
+
+func updateManualQueueItem(id, status, errMsg string) {
+	manualQueueMu.Lock()
+	defer manualQueueMu.Unlock()
+	for i := range manualQueue {
+		if manualQueue[i].ID == id {
+			manualQueue[i].Status = status
+			manualQueue[i].ErrorMessage = errMsg
+			manualQueue[i].CompletedAt = time.Now()
+			return
+		}
+	}
+}
+
+// GetManualQueue returns a snapshot of the manual upload queue (most recent first).
+// Items with status "done" are excluded after 15 seconds.
+func GetManualQueue() []ManualQueueItem {
+	manualQueueMu.RLock()
+	defer manualQueueMu.RUnlock()
+	const keepDoneFor = 15 * time.Second
+	out := make([]ManualQueueItem, 0, len(manualQueue))
+	for i := len(manualQueue) - 1; i >= 0; i-- {
+		item := manualQueue[i]
+		if item.Status == "done" && !item.CompletedAt.IsZero() && time.Since(item.CompletedAt) > keepDoneFor {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func TestConnection(testCfg SMBTestConfig) (string, error) {

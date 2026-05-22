@@ -164,8 +164,18 @@ type CreateChannelRequest struct {
 	Framerate     int    `form:"framerate"`
 	Resolution    int    `form:"resolution"`
 	Pattern       string `form:"pattern"`
+	SplitMinutes  int    `form:"split_minutes"`
 	MaxDuration   int    `form:"max_duration"`
 	MaxFilesize   int    `form:"max_filesize"`
+}
+
+// effectiveSplitMinutes returns per-channel split-by-minutes value.
+// split_minutes is preferred; max_duration is kept for backwards compatibility.
+func (r *CreateChannelRequest) effectiveSplitMinutes() int {
+	if r.SplitMinutes > 0 {
+		return r.SplitMinutes
+	}
+	return r.MaxDuration
 }
 
 func parseBulkUsernames(primary, bulk string) []string {
@@ -239,7 +249,7 @@ func CreateChannel(c *gin.Context) {
 			Framerate:   req.Framerate,
 			Resolution:  req.Resolution,
 			Pattern:     req.Pattern,
-			MaxDuration: req.MaxDuration,
+			MaxDuration: req.effectiveSplitMinutes(),
 			MaxFilesize: req.MaxFilesize,
 			CreatedAt:   time.Now().Unix(),
 		}, true); err != nil {
@@ -266,7 +276,7 @@ func EditChannel(c *gin.Context) {
 		req.Framerate,
 		req.Resolution,
 		req.Pattern,
-		req.MaxDuration,
+		req.effectiveSplitMinutes(),
 		req.MaxFilesize,
 	); err != nil {
 		c.AbortWithError(http.StatusBadRequest, fmt.Errorf("edit channel: %w", err))
@@ -297,6 +307,13 @@ func ResumeChannel(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/")
 }
 
+// SkipCurrentStream stops recording for current live stream and resumes on next stream.
+func SkipCurrentStream(c *gin.Context) {
+	server.Manager.SkipCurrentStream(c.Param("channelID"))
+
+	c.Redirect(http.StatusFound, "/")
+}
+
 // ClipChannel creates a short clip from the currently recording file.
 func ClipChannel(c *gin.Context) {
 	seconds := 45
@@ -318,6 +335,36 @@ func ClipChannel(c *gin.Context) {
 	}
 
 	c.Redirect(http.StatusFound, "/")
+}
+
+func ManualUploadAll(c *gin.Context) {
+	if err := server.Manager.ManualUploadAll(); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "Upload startet i baggrunden"})
+}
+
+func GetUploadQueue(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": uploader.GetManualQueue()})
+}
+
+func ManualUploadRecording(c *gin.Context) {
+	channelID := c.Param("channelID")
+	filePath := strings.TrimSpace(c.PostForm("path"))
+	if filePath == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "path mangler"})
+		return
+	}
+	if !isAllowedRecordingPath(channelID, filePath) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "fil er ikke tilladt"})
+		return
+	}
+	if err := server.Manager.ManualUploadRecording(channelID, filePath); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "Upload startet i baggrunden"})
 }
 
 func ListRecordings(c *gin.Context) {

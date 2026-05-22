@@ -822,6 +822,16 @@ func (m *Manager) ResumeChannel(channelID string) error {
 	return nil
 }
 
+// SkipCurrentStream skips recording for the currently active stream only.
+func (m *Manager) SkipCurrentStream(channelID string) error {
+	thing, ok := m.Channels.Load(channelID)
+	if !ok {
+		return nil
+	}
+	thing.(*channel.Channel).SkipCurrentStream()
+	return nil
+}
+
 // CreateClip creates a short clip from the currently recording segment.
 func (m *Manager) CreateClip(channelID string, seconds int) (string, error) {
 	thing, ok := m.Channels.Load(channelID)
@@ -843,6 +853,73 @@ func (m *Manager) ListRecordings(channelID string) ([]string, error) {
 		return nil, fmt.Errorf("channel not found")
 	}
 	return thing.(*channel.Channel).ListRecordings(), nil
+}
+
+// ManualUploadRecording triggers a manual SMB upload of the given recording file.
+// The local file is deleted after a successful upload.
+func (m *Manager) ManualUploadRecording(channelID, filePath string) error {
+	thing, ok := m.Channels.Load(channelID)
+	if !ok {
+		return fmt.Errorf("channel not found")
+	}
+	ch := thing.(*channel.Channel)
+
+	// Validate the path is within the channel's allowed recordings.
+	allowed := ch.ListRecordings()
+	cleanPath := filepath.Clean(filePath)
+	found := false
+	for _, p := range allowed {
+		if filepath.Clean(p) == cleanPath {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("fil er ikke i kanalens optagelsesliste")
+	}
+
+	// Build the remote relative path mirroring the automatic uploader.
+	completedDir := ch.CompletedDir()
+	rel := filepath.Base(cleanPath)
+	if r, err := filepath.Rel(completedDir, cleanPath); err == nil && r != "" && r != "." && !strings.HasPrefix(r, "..") {
+		rel = filepath.ToSlash(r)
+	}
+	remoteRelPath := "completed/" + rel
+
+	return uploader.ManualUpload(channelID, filePath, remoteRelPath)
+}
+
+// ManualUploadAll queues a manual SMB upload for every completed recording across all channels.
+func (m *Manager) ManualUploadAll() error {
+	cfg := server.Config
+	if cfg == nil || !cfg.SMBUploadEnabled {
+		return fmt.Errorf("SMB upload er ikke aktiveret")
+	}
+	var queued int
+	m.Channels.Range(func(key, value any) bool {
+		ch := value.(*channel.Channel)
+		channelID := entity.ChannelID(ch.Config.Site, ch.Config.Username)
+		recordings := ch.ListRecordings()
+		completedDir := ch.CompletedDir()
+		for _, filePath := range recordings {
+			cleanPath := filepath.Clean(filePath)
+			rel := filepath.Base(cleanPath)
+			if r, err := filepath.Rel(completedDir, cleanPath); err == nil && r != "" && r != "." && !strings.HasPrefix(r, "..") {
+				rel = filepath.ToSlash(r)
+			}
+			remoteRelPath := "completed/" + rel
+			if err := uploader.ManualUpload(channelID, filePath, remoteRelPath); err != nil {
+				ch.Error("manual upload all: %s: %v", filePath, err)
+			} else {
+				queued++
+			}
+		}
+		return true
+	})
+	if queued == 0 {
+		return fmt.Errorf("ingen filer fundet til upload")
+	}
+	return nil
 }
 
 func (m *Manager) ListClips(channelID string) ([]string, error) {

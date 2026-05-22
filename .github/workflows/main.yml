@@ -22,13 +22,18 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Resolve release version
+        run: |
+          echo "APP_VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+
       - name: Build binaries
         run: |
           mkdir -p dist
-          GOOS=linux   GOARCH=amd64  go build -ldflags="-s -w" -o dist/linux_amd64_goondvr .
-          GOOS=windows GOARCH=amd64  go build -ldflags="-s -w" -o dist/windows_amd64_goondvr.exe .
-          GOOS=darwin  GOARCH=amd64  go build -ldflags="-s -w" -o dist/darwin_amd64_goondvr .
-          GOOS=darwin  GOARCH=arm64  go build -ldflags="-s -w" -o dist/darwin_arm64_goondvr .
+          LDFLAGS="-s -w -X main.version=${APP_VERSION}"
+          GOOS=linux   GOARCH=amd64  go build -ldflags="$LDFLAGS" -o dist/linux_amd64_goondvr .
+          GOOS=windows GOARCH=amd64  go build -ldflags="$LDFLAGS" -o dist/windows_amd64_goondvr.exe .
+          GOOS=darwin  GOARCH=amd64  go build -ldflags="$LDFLAGS" -o dist/darwin_amd64_goondvr .
+          GOOS=darwin  GOARCH=arm64  go build -ldflags="$LDFLAGS" -o dist/darwin_arm64_goondvr .
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:

@@ -23,10 +23,14 @@ const logo = `
 ╚██████╔╝╚██████╔╝╚██████╔╝██║ ╚████║██████╔╝ ╚████╔╝ ██║  ██║
  ╚═════╝  ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝╚═════╝   ╚═══╝  ╚═╝  ╚═╝`
 
+// version is overridden at build time via -ldflags "-X main.version=<value>".
+// Keep a sensible fallback for local builds outside CI.
+var version = "dev"
+
 func main() {
 	app := &cli.App{
 		Name:    "goondvr",
-		Version: "4.0.3",
+		Version: version,
 		Usage:   "Record your favorite streams automatically. 😎🫵",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -68,6 +72,11 @@ func main() {
 			&cli.IntFlag{
 				Name:  "max-duration",
 				Usage: "Split video into segments every N minutes ('0' to disable)",
+				Value: 0,
+			},
+			&cli.IntFlag{
+				Name:  "split-minutes",
+				Usage: "Split recording every N minutes ('0' to disable, alias for --max-duration)",
 				Value: 0,
 			},
 			&cli.IntFlag{
@@ -195,7 +204,7 @@ func start(c *cli.Context) error {
 		Framerate:   c.Int("framerate"),
 		Resolution:  c.Int("resolution"),
 		Pattern:     c.String("pattern"),
-		MaxDuration: c.Int("max-duration"),
+		MaxDuration: server.Config.MaxDuration,
 		MaxFilesize: c.Int("max-filesize"),
 	}, false); err != nil {
 		return fmt.Errorf("create channel: %w", err)

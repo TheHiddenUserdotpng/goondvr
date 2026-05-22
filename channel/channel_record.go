@@ -73,6 +73,9 @@ func (ch *Channel) Monitor(runID uint64) {
 				errors.Is(err, internal.ErrRoomPasswordRequired)
 		}
 		retryDelay := func(err error) time.Duration {
+			if errors.Is(err, internal.ErrSkipCurrentStream) {
+				return 20 * time.Second
+			}
 			if isExpectedOffline(err) {
 				base := time.Duration(server.Config.Interval) * time.Minute
 				if server.IsNightOpsActive() {
@@ -103,6 +106,12 @@ func (ch *Channel) Monitor(runID uint64) {
 			ch.RetryCount++
 			ch.UpdateOnlineStatus(false)
 			delay := retryDelay(err)
+
+				if errors.Is(err, internal.ErrChannelOffline) {
+					if ch.ClearSkipCurrentStream() {
+						ch.Info("channel went offline; skip-current cleared, next stream will be recorded")
+					}
+				}
 
 			// Reset CF block count whenever a non-CF response is received.
 			if !errors.Is(err, internal.ErrCloudflareBlocked) && ch.CFBlockCount > 0 {
@@ -136,6 +145,8 @@ func (ch *Channel) Monitor(runID uint64) {
 				ch.Info("age verification required; pass cookies with `-cookies` to authenticate, try again in %s", formatDelay(delay))
 			} else if errors.Is(err, internal.ErrRoomPasswordRequired) {
 				ch.Info("room requires a password, try again in %s", formatDelay(delay))
+			} else if errors.Is(err, internal.ErrSkipCurrentStream) {
+				ch.Info("skip current stream active; waiting for stream to end")
 			} else if errors.Is(err, context.Canceled) {
 				// ...
 			} else {
@@ -223,6 +234,9 @@ func (ch *Channel) RecordStream(ctx context.Context, runID uint64, s site.Site, 
 		// Site returned nil, nil — channel is offline.
 		return fmt.Errorf("get stream: %w", internal.ErrChannelOffline)
 	}
+	if ch.ShouldSkipCurrentStream() {
+		return internal.ErrSkipCurrentStream
+	}
 
 	ch.StreamedAt = time.Now().Unix()
 	ch.Config.StreamedAt = ch.StreamedAt
@@ -298,6 +312,10 @@ func (ch *Channel) handleSegmentForMonitor(runID uint64, b []byte, duration floa
 	if isPaused || !isCurrentRun {
 		ch.fileMu.Unlock()
 		return retry.Unrecoverable(internal.ErrPaused)
+	}
+	if ch.ShouldSkipCurrentStream() {
+		ch.fileMu.Unlock()
+		return internal.ErrSkipCurrentStream
 	}
 
 	if ch.File == nil {

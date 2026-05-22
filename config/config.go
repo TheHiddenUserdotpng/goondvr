@@ -7,6 +7,11 @@ import (
 
 // New initializes a new Config struct with values from the CLI context.
 func New(c *cli.Context) (*entity.Config, error) {
+	maxDuration := c.Int("max-duration")
+	if splitMinutes := c.Int("split-minutes"); splitMinutes > 0 {
+		maxDuration = splitMinutes
+	}
+
 	return &entity.Config{
 		Version:              c.App.Version,
 		Username:             c.String("username"),
@@ -16,7 +21,7 @@ func New(c *cli.Context) (*entity.Config, error) {
 		Framerate:            c.Int("framerate"),
 		Resolution:           c.Int("resolution"),
 		Pattern:              c.String("pattern"),
-		MaxDuration:          c.Int("max-duration"),
+		MaxDuration:          maxDuration,
 		MaxFilesize:          c.Int("max-filesize"),
 		Port:                 c.String("port"),
 		Interval:             c.Int("interval"),

@@ -11,6 +11,7 @@ var (
 	ErrPrivateStream         = errors.New("channel is in a private show")
 	ErrHiddenStream          = errors.New("channel is hidden")
 	ErrRoomPasswordRequired  = errors.New("room requires a password")
+	ErrSkipCurrentStream     = errors.New("skip current stream requested")
 	ErrPaused            = errors.New("channel paused")
 	ErrStopped           = errors.New("channel stopped")
 	ErrNotFound          = errors.New("segment not found (404)")

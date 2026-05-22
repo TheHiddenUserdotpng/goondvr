@@ -61,6 +61,9 @@
             {{ else if .IsPaused }}
             <span class="ts-badge is-negative is-small is-start-spaced">PAUSED</span>
             {{ end }}
+            {{ if .IsSkipCurrent }}
+            <span class="ts-badge is-warning is-small is-start-spaced">SKIP CURRENT</span>
+            {{ end }}
             {{ if eq .HealthStatus "good" }}
             <span class="ts-badge is-positive is-small is-start-spaced" title="{{ .HealthSummary }}">RHS {{ .HealthScore }}</span>
             {{ else if eq .HealthStatus "warn" }}
@@ -146,7 +149,7 @@
         </div>
     </div>
 
-    <div class="ts-grid is-4-columns has-top-spaced-large">
+    <div class="ts-grid is-5-columns has-top-spaced-large">
         <div class="column">
             {{ if .IsPaused }}
             <form>
@@ -160,6 +163,19 @@
                     <span class="ts-icon is-pause-icon"></span>Pause
                 </button>
             </form>
+            {{ end }}
+        </div>
+        <div class="column">
+            {{ if and .IsOnline (not .IsPaused) }}
+                {{ if .IsSkipCurrent }}
+                <button type="button" class="ts-button is-outlined is-fluid" disabled>Skipping Current</button>
+                {{ else }}
+                <form>
+                    <button type="submit" class="ts-button is-outlined is-fluid" hx-post="/skip_current_stream/{{ .ChannelID }}" hx-swap="none" hx-disabled-elt="this" data-pending-label="Skipping...">Skip Current</button>
+                </form>
+                {{ end }}
+            {{ else }}
+            <button type="button" class="ts-button is-outlined is-fluid" disabled>Skip Current</button>
             {{ end }}
         </div>
         <div class="column">
@@ -194,6 +210,7 @@
                 {{ if and .IsOnline (not .IsPaused) }}<span class="ts-badge is-small">REC</span>
                 {{ else if .IsPaused }}<span class="ts-badge is-negative is-small">PAUSED</span>
                 {{ else }}<span class="ts-badge is-secondary is-small">OFFLINE</span>{{ end }}
+                {{ if .IsSkipCurrent }}<span class="ts-badge is-warning is-small is-start-spaced">SKIP</span>{{ end }}
                 {{ if eq .HealthStatus "good" }}
                 <span class="ts-badge is-positive is-small is-start-spaced" title="{{ .HealthSummary }}">RHS {{ .HealthScore }}</span>
                 {{ else if eq .HealthStatus "warn" }}
@@ -238,6 +255,15 @@
             <div class="column">
                 <button type="button" class="ts-button is-small is-start-icon is-outlined is-fluid js-open-clips" data-dialog="clips-dialog" data-channel-id="{{ .ChannelID }}" data-username="{{ .Username }}"><span class="ts-icon is-scissors-icon"></span>Moments</button>
             </div>
+            {{ if and .IsOnline (not .IsPaused) }}
+            <div class="column" style="grid-column: span 3;">
+                {{ if .IsSkipCurrent }}
+                <button type="button" class="ts-button is-small is-outlined is-fluid" disabled>Skipping Current Stream</button>
+                {{ else }}
+                <form><button class="ts-button is-small is-outlined is-fluid" hx-post="/skip_current_stream/{{ .ChannelID }}" hx-swap="none" hx-disabled-elt="this" data-pending-label="Skipping...">Skip Current Stream</button></form>
+                {{ end }}
+            </div>
+            {{ end }}
             <div class="column" style="grid-column: span 3;">
                 <form action="/stop_channel/{{ .ChannelID }}" method="POST" onsubmit="return handleDeleteSubmit(this, 'Are you sure you want to delete `{{ .Username }}` on {{ if eq .Site "stripchat" }}Stripchat{{ else }}Chaturbate{{ end }}?')">
                     <button class="ts-button is-small is-start-icon is-outlined is-negative is-fluid" data-pending-label="Deleting..."><span class="ts-icon is-trash-icon"></span>Delete</button>
@@ -254,6 +280,7 @@
         {{ if and .IsOnline (not .IsPaused) }}<span class="ts-badge is-small is-start-spaced">REC</span>
         {{ else if .IsPaused }}<span class="ts-badge is-negative is-small is-start-spaced">PAUSED</span>
         {{ else }}<span class="ts-badge is-secondary is-small is-start-spaced">OFFLINE</span>{{ end }}
+        {{ if .IsSkipCurrent }}<span class="ts-badge is-warning is-small is-start-spaced">SKIP</span>{{ end }}
         {{ if eq .HealthStatus "good" }}
         <span class="ts-badge is-positive is-small is-start-spaced" title="{{ .HealthSummary }}">{{ .HealthScore }}</span>
         {{ else if eq .HealthStatus "warn" }}
@@ -281,6 +308,11 @@
         <form><button class="ts-button is-small is-start-icon" hx-post="/resume_channel/{{ .ChannelID }}" hx-swap="none" hx-disabled-elt="this" data-pending-label="Resuming..."><span class="ts-icon is-play-icon"></span>Resume</button></form>
         {{ else }}
         <form><button class="ts-button is-small is-start-icon is-secondary" hx-post="/pause_channel/{{ .ChannelID }}" hx-swap="none" hx-disabled-elt="this" data-pending-label="Pausing..."><span class="ts-icon is-pause-icon"></span>Pause</button></form>
+        {{ end }}
+        {{ if and .IsOnline (not .IsPaused) (not .IsSkipCurrent) }}
+        <form><button class="ts-button is-small is-outlined" hx-post="/skip_current_stream/{{ .ChannelID }}" hx-swap="none" hx-disabled-elt="this" data-pending-label="Skipping...">Skip</button></form>
+        {{ else if .IsSkipCurrent }}
+        <button type="button" class="ts-button is-small is-outlined" disabled>Skipping</button>
         {{ end }}
         <button type="button" class="ts-button is-small is-icon is-outlined js-edit-channel" data-dialog="create-dialog" title="Edit channel" data-channel-id="{{ .ChannelID }}" data-username="{{ .Username }}" data-site="{{ .Site }}" data-framerate="{{ .Framerate }}" data-resolution="{{ .Resolution }}" data-pattern="{{ .Pattern }}" data-max-duration="{{ .MaxDurationValue }}" data-max-filesize="{{ .MaxFilesizeValue }}"><span class="ts-icon is-pen-icon"></span></button>
         <button type="button" class="ts-button is-small is-icon is-outlined js-open-clips" data-dialog="clips-dialog" title="Clips & Moments" data-channel-id="{{ .ChannelID }}" data-username="{{ .Username }}"><span class="ts-icon is-scissors-icon"></span></button>

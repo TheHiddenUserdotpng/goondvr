@@ -108,6 +108,17 @@ $ docker compose up -d
 
 Then visit [`http://localhost:8080`](http://localhost:8080) in your browser.
 
+## Version Handling
+
+Release builds use automatic version injection from the Git tag in GitHub Actions.
+When you push a tag like `v4.1.0`, binaries are built with that exact value as the app version (shown in `--version` and UI header).
+
+For local/manual builds, version defaults to `dev` unless overridden:
+
+```bash
+$ go build -ldflags "-X main.version=v4.1.0" -o goondvr .
+```
+
 # 🧾 Command-Line Options
 
 Available options:
@@ -121,6 +132,7 @@ Available options:
 --resolution value          Desired resolution (e.g., 1080 for 1080p) (default: 1080)
 --pattern value             Template for naming recorded videos (default: "videos/{{if ne .Site \"chaturbate\"}}{{.Site}}/{{end}}{{.Username}}_{{.Year}}-{{.Month}}-{{.Day}}_{{.Hour}}-{{.Minute}}-{{.Second}}{{if .Sequence}}_{{.Sequence}}{{end}}")
 --max-duration value        Split video into segments every N minutes ('0' to disable) (default: 0)
+--split-minutes value       Split recording every N minutes ('0' to disable, alias for --max-duration) (default: 0)
 --max-filesize value        Split video into segments every N MB ('0' to disable) (default: 0)
 --port value, -p value      Port for the web interface and API (default: "8080")
 --interval value            Check if the channel is online every N minutes (default: 1)
@@ -150,6 +162,9 @@ $ ./goondvr -u some_model --site stripchat
 
 # Split every 30 minutes
 $ ./goondvr -u yamiodymel -max-duration 30
+
+# Same split setting (alias)
+$ ./goondvr -u yamiodymel --split-minutes 30
 
 # Split at 1024 MB
 $ ./goondvr -u yamiodymel -max-filesize 1024

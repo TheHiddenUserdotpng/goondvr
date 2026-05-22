@@ -189,6 +189,11 @@ func completedDirForChannel(ch *Channel) string {
 	return filepath.Join(recordingDirFromPattern(ch.Config.Pattern), "completed")
 }
 
+// CompletedDir returns the directory where finalized recordings are stored.
+func (ch *Channel) CompletedDir() string {
+	return completedDirForChannel(ch)
+}
+
 func finalOutputExt(filename string) string {
 	if server.Config.FFmpegContainer == "mkv" {
 		return ".mkv"
