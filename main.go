@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime/debug"
+	"strings"
 	"syscall"
 
 	"github.com/HeapOfChaos/goondvr/config"
@@ -27,10 +29,45 @@ const logo = `
 // Keep a sensible fallback for local builds outside CI.
 var version = "dev"
 
+func resolveVersion() string {
+	v := strings.TrimSpace(version)
+	if v != "" && v != "dev" {
+		if strings.HasPrefix(v, "v") {
+			return v
+		}
+		return "v" + v
+	}
+
+	if info, ok := debug.ReadBuildInfo(); ok {
+		rev := ""
+		modified := false
+		for _, setting := range info.Settings {
+			switch setting.Key {
+			case "vcs.revision":
+				rev = setting.Value
+			case "vcs.modified":
+				modified = setting.Value == "true"
+			}
+		}
+		if rev != "" {
+			short := rev
+			if len(short) > 7 {
+				short = short[:7]
+			}
+			if modified {
+				return "v0.0.0-dev+" + short + ".dirty"
+			}
+			return "v0.0.0-dev+" + short
+		}
+	}
+
+	return "v0.0.0-dev"
+}
+
 func main() {
 	app := &cli.App{
 		Name:    "goondvr",
-		Version: version,
+		Version: resolveVersion(),
 		Usage:   "Record your favorite streams automatically. 😎🫵",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
