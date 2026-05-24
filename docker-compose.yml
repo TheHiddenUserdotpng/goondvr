@@ -1,6 +1,6 @@
 services:
   goondvr:
-    image: thehiddenuserdotpng/goondvr
+    image: ghcr.io/thehiddenuserdotpng/goondvr:v4.0.4.2-test
     container_name: goondvr
     ports:
       - 8080:8080
